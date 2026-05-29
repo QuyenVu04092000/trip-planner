@@ -29,6 +29,10 @@ export async function registerSW(): Promise<ServiceWorkerRegistration | null> {
 // ── Subscribe to push & save to Supabase ─────────────────────────────────────
 export async function subscribeToPush(): Promise<boolean> {
   try {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
     const reg = await navigator.serviceWorker.ready;
     const existing = await reg.pushManager.getSubscription();
     const subscription = existing ?? await reg.pushManager.subscribe({
@@ -42,10 +46,11 @@ export async function subscribeToPush(): Promise<boolean> {
     };
 
     const { error } = await supabase.from('push_subscriptions').upsert({
+      user_id: user.id,   // ← bắt buộc, thiếu cái này là lỗi NOT NULL
       endpoint,
       p256dh: keys.p256dh,
       auth_key: keys.auth,
-    }, { onConflict: 'endpoint' });
+    }, { onConflict: 'user_id,endpoint' });
 
     if (error) throw error;
     return true;
