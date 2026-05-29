@@ -1,0 +1,28 @@
+{
+    "name": "@types/web-push",
+    "version": "3.6.4",
+    "description": "TypeScript definitions for web-push",
+    "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/web-push",
+    "license": "MIT",
+    "contributors": [
+        {
+            "name": "Paul Lessing",
+            "githubUsername": "paullessing",
+            "url": "https://github.com/paullessing"
+        }
+    ],
+    "main": "",
+    "types": "index.d.ts",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "directory": "types/web-push"
+    },
+    "scripts": {},
+    "dependencies": {
+        "@types/node": "*"
+    },
+    "peerDependencies": {},
+    "typesPublisherContentHash": "b6cacd362cfa6f23b4d422eca469bfe2eaf8092672b62c389e083fabb7b3f819",
+    "typeScriptVersion": "4.8"
+}

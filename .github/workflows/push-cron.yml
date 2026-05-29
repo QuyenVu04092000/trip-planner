@@ -1,0 +1,19 @@
+name: Daily Push Notification
+
+on:
+  schedule:
+    # Chạy lúc 8h sáng giờ Việt Nam (UTC+7 = 01:00 UTC)
+    - cron: '0 1 * * *'
+  workflow_dispatch: # cho phép chạy thủ công để test
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Supabase Edge Function
+        run: |
+          curl -X GET \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/trip-push-notify" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail-with-body
