@@ -21,10 +21,11 @@ function daysUntil(dateStr: string): number {
 }
 
 function buildMessage(days: number, emoji: string, tripName: string) {
-  if (days === 0) return { title: 'TripMemo ✈️', body: `${emoji} ${tripName} bắt đầu hôm nay! Chúc chuyến đi vui vẻ 🎉` };
-  if (days === 1) return { title: 'TripMemo ✈️', body: `${emoji} ${tripName} — còn đúng 1 ngày nữa là xuất phát!` };
-  if (days === 3) return { title: 'TripMemo ✈️', body: `${emoji} ${tripName} — còn 3 ngày nữa, đã chuẩn bị chưa?` };
-  if (days === 7) return { title: 'TripMemo ✈️', body: `${emoji} ${tripName} — còn 1 tuần nữa là đi rồi!` };
+  const title = `${emoji} ${tripName}`;
+  if (days === 0) return { title, body: `Hôm nay là ngày xuất phát! Chúc chuyến đi vui vẻ 🎉` };
+  if (days === 1) return { title, body: `Còn đúng 1 ngày nữa là xuất phát rồi!` };
+  if (days === 3) return { title, body: `Còn 3 ngày nữa, đã chuẩn bị chưa?` };
+  if (days === 7) return { title, body: `Còn 1 tuần nữa là đi rồi!` };
   return null;
 }
 
