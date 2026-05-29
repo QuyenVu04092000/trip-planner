@@ -4,7 +4,19 @@
 
 * {
   box-sizing: border-box;
-  -webkit-tap-highlight-color: transparent; /* tắt bôi đen khi tap trên mobile */
+  -webkit-tap-highlight-color: transparent; /* tắt highlight khi tap trên mobile */
+}
+
+/* Không cho bôi đen/chọn text như native app */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Cho phép chọn text trong input/textarea để user vẫn có thể edit bình thường */
+input, textarea, [contenteditable] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* ── Safe area utilities (iOS notch / Dynamic Island) ── */
