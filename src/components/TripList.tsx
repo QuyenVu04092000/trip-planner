@@ -271,7 +271,7 @@ export default function TripList({
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-zinc-900 sticky top-0 z-30 border-b border-zinc-800">
+      <header className="bg-zinc-900 sticky top-0 z-30 border-b border-zinc-800 pt-safe">
         <div className="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center ring-1 ring-white/10">

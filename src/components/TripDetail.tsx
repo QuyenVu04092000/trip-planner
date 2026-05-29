@@ -96,7 +96,7 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
       {/* Header */}
       <header className="sticky top-0 z-30">
         {/* Frosted glass nav bar */}
-        <div className="bg-white/80 backdrop-blur-xl border-b border-slate-100/80 shadow-sm">
+        <div className="bg-white/80 backdrop-blur-xl border-b border-slate-100/80 shadow-sm pt-safe">
           <div className="px-4 py-3 flex items-center gap-3">
             <button
               onClick={onBack}
