@@ -107,7 +107,12 @@ export async function createTrip(trip: Trip): Promise<void> {
 }
 
 export async function updateTrip(trip: Trip): Promise<void> {
-  const { error } = await supabase.from('trips').update(tripToRow(trip)).eq('id', trip.id);
+  // Also backfill user_id in case trip was created before the column existed
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase
+    .from('trips')
+    .update({ ...tripToRow(trip), ...(user?.id ? { user_id: user.id } : {}) })
+    .eq('id', trip.id);
   if (error) throw error;
 }
 

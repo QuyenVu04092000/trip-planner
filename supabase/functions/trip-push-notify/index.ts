@@ -28,18 +28,68 @@ function buildMessage(days: number, emoji: string, tripName: string) {
   return null;
 }
 
-Deno.serve(async (req) => {
-  // Allow cron (GET) and frontend trigger (POST)
-  const isCron = req.method === 'GET';
+async function sendToSub(
+  supabase: ReturnType<typeof createClient>,
+  sub: { endpoint: string; p256dh: string; auth_key: string },
+  payload: object,
+): Promise<'sent' | 'stale' | 'error'> {
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth_key } },
+      JSON.stringify(payload),
+    );
+    console.log(`[push] OK → ${sub.endpoint.slice(0, 70)}…`);
+    return 'sent';
+  } catch (err: unknown) {
+    const status = (err as { statusCode?: number })?.statusCode;
+    console.warn(`[push] FAIL (HTTP ${status ?? '?'}) → ${sub.endpoint.slice(0, 70)}…`, err);
+    if (status === 410 || status === 404) {
+      await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      console.log('[push] Stale subscription removed.');
+      return 'stale';
+    }
+    return 'error';
+  }
+}
 
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
 
   try {
-    if (isCron) {
-      // ── Cron mode: check ALL trips for ALL users ──────────────────────────
+    // ── TEST mode: POST /trip-push-notify?test=1 ─────────────────────────────
+    // Sends an immediate test push to ALL subscriptions of the authenticated user
+    // regardless of trip dates. Useful for debugging.
+    if (req.method === 'POST' && url.searchParams.get('test') === '1') {
+      const authHeader = req.headers.get('Authorization') ?? '';
+      const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+      if (!user) return new Response('Unauthorized', { status: 401 });
+
+      const { data: subs } = await supabase
+        .from('push_subscriptions')
+        .select('endpoint, p256dh, auth_key')
+        .eq('user_id', user.id);
+
+      let sent = 0;
+      for (const sub of subs ?? []) {
+        const result = await sendToSub(supabase, sub, {
+          title: 'TripMemo ✈️ — Test Push',
+          body: 'Push notification đang hoạt động tốt! 🎉',
+          tag: 'test-push',
+        });
+        if (result === 'sent') sent++;
+      }
+      return new Response(
+        JSON.stringify({ ok: true, mode: 'test', sent, total: subs?.length ?? 0 }),
+        { status: 200 },
+      );
+    }
+
+    // ── Cron mode: GET ────────────────────────────────────────────────────────
+    if (req.method === 'GET') {
       const { data: trips, error } = await supabase
         .from('trips')
         .select('id, name, emoji, start_date, user_id')
@@ -47,48 +97,51 @@ Deno.serve(async (req) => {
 
       if (error) throw error;
 
+      let totalSent = 0;
+      const details: string[] = [];
+
       for (const trip of trips ?? []) {
         const days = daysUntil(trip.start_date);
+        console.log(`[cron] "${trip.name}" start_date=${trip.start_date} days=${days}`);
         if (!NOTIFY_DAYS.includes(days)) continue;
 
         const msg = buildMessage(days, trip.emoji, trip.name);
         if (!msg) continue;
 
-        // Get subscriptions for this user
         const { data: subs } = await supabase
           .from('push_subscriptions')
           .select('endpoint, p256dh, auth_key')
           .eq('user_id', trip.user_id);
 
+        console.log(`[cron] "${trip.name}" → ${subs?.length ?? 0} subscription(s), days=${days}`);
+
         for (const sub of subs ?? []) {
-          try {
-            await webpush.sendNotification(
-              { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth_key } },
-              JSON.stringify({ ...msg, tag: `${trip.id}_d${days}` }),
-            );
-            console.log(`[cron] Sent push to ${sub.endpoint.slice(0, 60)}…`);
-          } catch (pushErr: unknown) {
-            const status = (pushErr as { statusCode?: number })?.statusCode;
-            console.warn(`[cron] sendNotification failed (${status ?? '?'}):`, pushErr);
-            // 410 Gone or 404 = subscription no longer valid → delete it
-            if (status === 410 || status === 404) {
-              await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-              console.log('[cron] Removed stale subscription:', sub.endpoint.slice(0, 60));
-            }
+          const result = await sendToSub(supabase, sub, {
+            ...msg,
+            tag: `${trip.id}_d${days}`,
+          });
+          if (result === 'sent') {
+            totalSent++;
+            details.push(`✓ ${trip.name} (${days}d)`);
           }
         }
       }
 
-      return new Response(JSON.stringify({ ok: true, mode: 'cron' }), { status: 200 });
+      return new Response(
+        JSON.stringify({ ok: true, mode: 'cron', sent: totalSent, details }),
+        { status: 200 },
+      );
+    }
 
-    } else {
-      // ── Frontend trigger: check ONE trip for the current user ─────────────
+    // ── Frontend trigger: POST ────────────────────────────────────────────────
+    if (req.method === 'POST') {
       const authHeader = req.headers.get('Authorization') ?? '';
       const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
       if (!user) return new Response('Unauthorized', { status: 401 });
 
       const { tripId, tripName, emoji, startDate } = await req.json();
       const days = daysUntil(startDate);
+
       if (!NOTIFY_DAYS.includes(days)) {
         return new Response(JSON.stringify({ ok: true, skipped: true, days }), { status: 200 });
       }
@@ -103,27 +156,20 @@ Deno.serve(async (req) => {
 
       let sent = 0;
       for (const sub of subs ?? []) {
-        try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth_key } },
-            JSON.stringify({ ...msg, tag: `${tripId}_d${days}` }),
-          );
-          sent++;
-          console.log(`[trigger] Sent push to ${sub.endpoint.slice(0, 60)}…`);
-        } catch (pushErr: unknown) {
-          const status = (pushErr as { statusCode?: number })?.statusCode;
-          console.warn(`[trigger] sendNotification failed (${status ?? '?'}):`, pushErr);
-          if (status === 410 || status === 404) {
-            await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-          }
-        }
+        const result = await sendToSub(supabase, sub, {
+          ...msg,
+          tag: `${tripId}_d${days}`,
+        });
+        if (result === 'sent') sent++;
       }
 
-      return new Response(JSON.stringify({ ok: true, sent, days }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, mode: 'trigger', sent, days }), { status: 200 });
     }
 
+    return new Response('Method not allowed', { status: 405 });
+
   } catch (err) {
-    console.error(err);
+    console.error('[push] Unhandled error:', err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
   }
 });
