@@ -270,7 +270,7 @@ function Lightbox({
     <div className="fixed inset-0 z-50 bg-black flex flex-col select-none">
 
       {/* ── Top bar ── */}
-      <div className="absolute top-0 inset-x-0 z-10 flex items-start justify-between px-4 pt-4 pb-16 bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
+      <div className="absolute top-0 inset-x-0 z-10 flex items-start justify-between px-4 pt-safe-4 pb-16 bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
         {/* Counter */}
         <div className="pointer-events-auto bg-black/40 backdrop-blur-sm rounded-lg px-2.5 py-1.5 text-white/70 text-xs font-semibold">
           {index + 1} / {items.length}
@@ -344,7 +344,7 @@ function Lightbox({
       {/* ── Thumbnail strip ── */}
       {items.length > 1 && (
         <div
-          className="flex-shrink-0 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-5 px-4"
+          className="flex-shrink-0 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-safe-5 px-4"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-center gap-1.5 overflow-x-auto scrollbar-none">
