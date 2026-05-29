@@ -213,40 +213,88 @@ function TripCardCover({ trip, onDelete }: CoverProps) {
 const PULL_THRESHOLD = 72; // px to pull before triggering refresh
 
 function usePullToRefresh(onRefresh: () => Promise<void>) {
-  const [pullY, setPullY] = useState(0);       // current pull distance
+  const [pullY, setPullY] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const startYRef = useRef(0);
-  const pullingRef = useRef(false);
+  const [releasing, setReleasing] = useState(false); // animate back on release
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Refs to avoid stale closures inside native event listeners
+  const startYRef    = useRef(0);
+  const pullingRef   = useRef(false);
+  const pullYRef     = useRef(0);
+  const refreshingRef = useRef(false);
+  // Keep onRefresh stable via ref so the effect doesn't re-run
+  const onRefreshRef = useRef(onRefresh);
+  useEffect(() => { onRefreshRef.current = onRefresh; }, [onRefresh]);
 
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    if ((scrollRef.current?.scrollTop ?? 0) > 0) return; // only when at top
-    startYRef.current = e.touches[0].clientY;
-    pullingRef.current = true;
-  }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
 
-  const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!pullingRef.current || refreshing) return;
-    const delta = e.touches[0].clientY - startYRef.current;
-    if (delta <= 0) { setPullY(0); return; }
-    // Rubber-band: resistance increases as you pull further
-    setPullY(Math.min(delta * 0.45, PULL_THRESHOLD + 20));
-  }, [refreshing]);
+    const handleTouchStart = (e: TouchEvent) => {
+      if (el.scrollTop > 0) return;          // only trigger at very top
+      if (refreshingRef.current) return;
+      startYRef.current = e.touches[0].clientY;
+      pullingRef.current = true;
+    };
 
-  const onTouchEnd = useCallback(async () => {
-    if (!pullingRef.current) return;
-    pullingRef.current = false;
-    if (pullY >= PULL_THRESHOLD) {
-      setRefreshing(true);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!pullingRef.current || refreshingRef.current) return;
+      const delta = e.touches[0].clientY - startYRef.current;
+      if (delta <= 0) {
+        pullYRef.current = 0;
+        setPullY(0);
+        return;
+      }
+      // Prevent native iOS overscroll/bounce while we handle the pull
+      e.preventDefault();
+      const y = Math.min(delta * 0.5, PULL_THRESHOLD + 24);
+      pullYRef.current = y;
+      setPullY(y);
+    };
+
+    const handleTouchEnd = async () => {
+      if (!pullingRef.current) return;
+      pullingRef.current = false;
+      const current = pullYRef.current;
+      if (current >= PULL_THRESHOLD) {
+        // Trigger refresh
+        refreshingRef.current = true;
+        setRefreshing(true);
+        pullYRef.current = 0;
+        setPullY(0);
+        await onRefreshRef.current();
+        refreshingRef.current = false;
+        setRefreshing(false);
+      } else {
+        // Animate back to 0
+        setReleasing(true);
+        setPullY(0);
+        pullYRef.current = 0;
+        setTimeout(() => setReleasing(false), 200);
+      }
+    };
+
+    const handleTouchCancel = () => {
+      pullingRef.current = false;
+      pullYRef.current = 0;
       setPullY(0);
-      await onRefresh();
-      setRefreshing(false);
-    } else {
-      setPullY(0);
-    }
-  }, [pullY, onRefresh]);
+    };
 
-  return { scrollRef, pullY, refreshing, onTouchStart, onTouchMove, onTouchEnd };
+    // Must be { passive: false } so we can call e.preventDefault() in touchmove
+    el.addEventListener('touchstart',  handleTouchStart,  { passive: true  });
+    el.addEventListener('touchmove',   handleTouchMove,   { passive: false });
+    el.addEventListener('touchend',    handleTouchEnd,    { passive: true  });
+    el.addEventListener('touchcancel', handleTouchCancel, { passive: true  });
+
+    return () => {
+      el.removeEventListener('touchstart',  handleTouchStart);
+      el.removeEventListener('touchmove',   handleTouchMove);
+      el.removeEventListener('touchend',    handleTouchEnd);
+      el.removeEventListener('touchcancel', handleTouchCancel);
+    };
+  }, []); // only run once — uses refs for fresh values
+
+  return { scrollRef, pullY, refreshing, releasing };
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -264,7 +312,7 @@ export default function TripList({
   const [pushState, setPushState] = useState<'loading' | 'subscribed' | 'not-subscribed' | 'unsupported'>('loading');
   const [notifToast, setNotifToast] = useState<string | null>(null);
 
-  const { scrollRef, pullY, refreshing, onTouchStart, onTouchMove, onTouchEnd } =
+  const { scrollRef, pullY, refreshing, releasing } =
     usePullToRefresh(onRefresh);
 
   // Check current push subscription state on mount
@@ -384,28 +432,25 @@ export default function TripList({
       </header>
 
       {/* Scrollable area with pull-to-refresh */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
-        {/* Pull indicator */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        {/* Pull indicator — height animates only when releasing or refreshing */}
         <div
-          className="flex items-center justify-center overflow-hidden transition-all duration-200"
-          style={{ height: refreshing ? 56 : pullY }}
+          className="flex items-center justify-center overflow-hidden"
+          style={{
+            height: refreshing ? 56 : pullY,
+            transition: releasing || refreshing ? 'height 0.2s ease' : 'none',
+          }}
         >
           <div
-            className={`w-9 h-9 rounded-full flex items-center justify-center shadow-md ${
+            className={`w-9 h-9 rounded-full flex items-center justify-center shadow-md transition-colors duration-150 ${
               pullProgress >= 1 || refreshing ? 'bg-blue-500 text-white' : 'bg-white text-slate-400'
-            } transition-colors duration-150`}
-            style={{ transform: `rotate(${refreshing ? 0 : iconRotation}deg)` }}
+            }`}
+            style={{
+              transform: refreshing ? 'none' : `rotate(${iconRotation}deg)`,
+              transition: releasing ? 'transform 0.2s ease' : 'none',
+            }}
           >
-            <RefreshCw
-              size={16}
-              className={refreshing ? 'animate-spin' : ''}
-            />
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
           </div>
         </div>
 
