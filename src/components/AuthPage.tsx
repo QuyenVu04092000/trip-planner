@@ -122,7 +122,7 @@ export default function AuthPage() {
       <div className="flex-1 flex flex-col bg-slate-50 min-h-screen lg:min-h-0">
 
         {/* Mobile-only top bar */}
-        <div className="lg:hidden flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 bg-white">
+        <div className="lg:hidden flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 bg-white pt-safe">
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-violet-600 rounded-lg flex items-center justify-center">
             <Plane size={14} className="text-white" />
           </div>

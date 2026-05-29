@@ -81,7 +81,7 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 pt-safe">
         <div className="text-center">
           <div className="text-5xl mb-4">✈️</div>
           <p className="text-slate-400 text-sm">Đang tải...</p>
@@ -94,7 +94,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 pt-safe">
         <div className="text-center">
           <div className="text-5xl mb-4">✈️</div>
           <p className="text-slate-400 text-sm">Đang tải dữ liệu...</p>

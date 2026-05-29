@@ -332,7 +332,7 @@ export default function TripList({
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
+      <main className="max-w-5xl mx-auto px-4 py-8 pb-safe">
         {trips.length === 0 ? (
           <div className="text-center py-20 fade-in">
             <div className="text-8xl mb-6">🗺️</div>

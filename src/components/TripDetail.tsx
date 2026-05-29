@@ -205,7 +205,7 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
       </header>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-hidden flex flex-col pb-safe">
         {tab === "plan" ? (
           <div className="flex-1 overflow-auto">
             {planLoading ? (
