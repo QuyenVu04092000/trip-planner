@@ -2,8 +2,8 @@ name: Daily Push Notification
 
 on:
   schedule:
-    # Chạy lúc 8h sáng giờ Việt Nam (UTC+7 = 01:00 UTC)
-    - cron: '0 1 * * *'
+    # Chạy lúc 0h đêm giờ Việt Nam (UTC+7 = 17:00 UTC ngày hôm trước)
+    - cron: '0 17 * * *'
   workflow_dispatch: # cho phép chạy thủ công để test
 
 jobs:
