@@ -4,6 +4,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent; /* tắt bôi đen khi tap trên mobile */
 }
 
 /* ── Safe area utilities (iOS notch / Dynamic Island) ── */
