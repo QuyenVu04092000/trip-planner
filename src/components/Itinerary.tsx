@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Plus, Trash2, MapPin, CalendarDays, DollarSign, Navigation } from 'lucide-react';
+import PlacesAutocomplete from './PlacesAutocomplete';
 
 function openGoogleMaps(address: string) {
   const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
@@ -166,11 +167,11 @@ function EditForm({ form, color, saving, onChange, onSave, onCancel }: {
       {/* Address */}
       <div>
         <span className="text-xs font-semibold text-slate-500 block mb-1.5">Địa chỉ</span>
-        <input
-          className={inp}
+        <PlacesAutocomplete
           value={form.address}
-          onChange={e => onChange({ ...form, address: e.target.value })}
-          placeholder="Địa chỉ hoặc tên địa điểm"
+          onChange={v => onChange({ ...form, address: v })}
+          placeholder="Tìm địa điểm..."
+          className={inp}
         />
       </div>
 
