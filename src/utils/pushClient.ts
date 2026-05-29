@@ -86,6 +86,37 @@ export async function getPushSubscriptionState(): Promise<'subscribed' | 'not-su
   }
 }
 
+// ── Auto-subscribe when running as installed PWA (standalone mode) ────────────
+// On iOS, the home-screen PWA has a separate SW registration from Safari.
+// If the user subscribed in Safari, the subscription won't fire in the background
+// when the PWA is closed. This function re-subscribes in the correct context
+// automatically whenever the app is opened as a standalone PWA.
+export async function autoSubscribeIfStandalone(): Promise<void> {
+  // Only run inside an installed PWA (not in a regular browser tab)
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window.navigator as any).standalone === true;
+
+  if (!isStandalone) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  // Only auto-subscribe if the user already granted permission — don't prompt
+  if (Notification.permission !== 'granted') return;
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) return; // already subscribed in this SW context — nothing to do
+
+    // PWA context has no subscription yet → subscribe now (saves to Supabase)
+    console.log('[Push] Standalone PWA: re-subscribing in correct SW context…');
+    await subscribeToPush();
+  } catch (err) {
+    console.warn('[Push] autoSubscribeIfStandalone failed:', err);
+  }
+}
+
 // ── Trigger immediate push check via Edge Function ───────────────────────────
 export async function triggerPushCheck(tripId: string, tripName: string, emoji: string, startDate: string): Promise<void> {
   try {

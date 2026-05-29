@@ -250,7 +250,16 @@ export default function TripList({
     const ok = await subscribeToPush();
     if (ok) {
       setPushState('subscribed');
-      showToast('Đã bật push notification! Sẽ nhắc bạn 7, 3, 1 ngày trước chuyến đi 🔔');
+      // Check if running in standalone mode (installed PWA) — background push works here
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window.navigator as any).standalone === true;
+      if (isStandalone) {
+        showToast('Đã bật thông báo! Sẽ nhắc 7, 3, 1 ngày trước chuyến đi — kể cả khi đóng app 🔔', 4500);
+      } else {
+        showToast('Đã bật thông báo! Để nhận khi đóng app, hãy mở app từ màn hình chính (Add to Home Screen) 📲', 5500);
+      }
     } else {
       showToast('Không thể bật thông báo. Thử lại sau nhé.');
     }

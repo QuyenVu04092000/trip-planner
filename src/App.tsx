@@ -4,7 +4,7 @@ import type { Trip, AppPage } from './types';
 import { fetchTrips, createTrip, deleteTrip } from './utils/db';
 import { supabase } from './utils/supabase';
 import { checkAndNotify } from './utils/notifications';
-import { registerSW, triggerPushCheck } from './utils/pushClient';
+import { registerSW, triggerPushCheck, autoSubscribeIfStandalone } from './utils/pushClient';
 
 import TripList from './components/TripList';
 import TripDetail from './components/TripDetail';
@@ -35,6 +35,9 @@ export default function App() {
 
   useEffect(() => {
     if (!session?.user?.id) return;
+    // If running as installed PWA and permission already granted, re-subscribe
+    // in the correct SW context so background push works on iOS.
+    autoSubscribeIfStandalone();
     setLoading(true);
     fetchTrips()
       .then((data) => { setTrips(data); checkAndNotify(data); })

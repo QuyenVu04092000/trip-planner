@@ -66,7 +66,16 @@ Deno.serve(async (req) => {
               { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth_key } },
               JSON.stringify({ ...msg, tag: `${trip.id}_d${days}` }),
             );
-          } catch { /* subscription expired — ignore */ }
+            console.log(`[cron] Sent push to ${sub.endpoint.slice(0, 60)}…`);
+          } catch (pushErr: unknown) {
+            const status = (pushErr as { statusCode?: number })?.statusCode;
+            console.warn(`[cron] sendNotification failed (${status ?? '?'}):`, pushErr);
+            // 410 Gone or 404 = subscription no longer valid → delete it
+            if (status === 410 || status === 404) {
+              await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+              console.log('[cron] Removed stale subscription:', sub.endpoint.slice(0, 60));
+            }
+          }
         }
       }
 
@@ -100,7 +109,14 @@ Deno.serve(async (req) => {
             JSON.stringify({ ...msg, tag: `${tripId}_d${days}` }),
           );
           sent++;
-        } catch { /* ignore */ }
+          console.log(`[trigger] Sent push to ${sub.endpoint.slice(0, 60)}…`);
+        } catch (pushErr: unknown) {
+          const status = (pushErr as { statusCode?: number })?.statusCode;
+          console.warn(`[trigger] sendNotification failed (${status ?? '?'}):`, pushErr);
+          if (status === 410 || status === 404) {
+            await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+          }
+        }
       }
 
       return new Response(JSON.stringify({ ok: true, sent, days }), { status: 200 });
