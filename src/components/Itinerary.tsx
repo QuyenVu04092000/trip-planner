@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { Plus, Trash2, MapPin, CalendarDays, DollarSign } from 'lucide-react';
+import { Plus, Trash2, MapPin, CalendarDays, DollarSign, Navigation } from 'lucide-react';
+
+function openGoogleMaps(address: string) {
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
+  window.open(url, '_blank');
+}
 import type { Activity } from '../types';
 import DatePicker from './DatePicker';
 import TimePicker from './TimePicker';
@@ -90,9 +95,16 @@ function Card({ act, color, onEdit, onDelete }: {
         {(act.address || act.cost || act.notes) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
             {act.address && (
-              <span className="flex items-center gap-1 text-xs text-slate-400">
+              <span className="flex items-center gap-1">
                 <MapPin size={9} className="flex-shrink-0 text-slate-300" />
-                <span className="truncate max-w-[150px]">{act.address}</span>
+                <span className="truncate max-w-[130px] text-xs text-slate-400">{act.address}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); openGoogleMaps(act.address); }}
+                  className="flex items-center gap-0.5 text-[10px] font-semibold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full flex-shrink-0 active:bg-blue-100 transition-colors"
+                >
+                  <Navigation size={8} />
+                  Dẫn đường
+                </button>
               </span>
             )}
             {act.cost && (
