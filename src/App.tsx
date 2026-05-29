@@ -63,6 +63,12 @@ export default function App() {
     setTrips(prev => prev.filter(t => t.id !== tripId));
   }, []);
 
+  const handleRefresh = useCallback(async () => {
+    const data = await fetchTrips();
+    setTrips(data);
+    checkAndNotify(data);
+  }, []);
+
   const handleUpdateTrip = useCallback((updated: Trip) => {
     setTrips(prev => {
       const next = prev.map(t => t.id === updated.id ? updated : t);
@@ -123,6 +129,7 @@ export default function App() {
       onCreateTrip={handleCreateTrip}
       onDeleteTrip={handleDeleteTrip}
       onLogout={handleLogout}
+      onRefresh={handleRefresh}
     />
   );
 }

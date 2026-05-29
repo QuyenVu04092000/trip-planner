@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { Plus, MapPin, Calendar, Plane, Trash2, ImageIcon, LogOut, Bell, BellRing, BellOff } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Plus, MapPin, Calendar, Plane, Trash2, ImageIcon, LogOut, Bell, BellRing, BellOff, RefreshCw } from "lucide-react";
 import type { Trip } from "../types";
 import { fetchMediaItems } from "../utils/db";
 import { formatDateRange, getDays, getCountdown } from "../utils/format";
@@ -12,6 +12,7 @@ interface Props {
   onCreateTrip: (data: Omit<Trip, "id" | "createdAt" | "updatedAt">) => void;
   onDeleteTrip: (tripId: string) => void;
   onLogout: () => void;
+  onRefresh: () => Promise<void>;
 }
 
 // ── Trip Card Cover with image cycling ──────────────────────────────────────
@@ -207,17 +208,64 @@ function TripCardCover({ trip, onDelete }: CoverProps) {
 
 // ── Main component ──────────────────────────────────────────────────────────
 
+// ── Pull-to-refresh hook ────────────────────────────────────────────────────
+
+const PULL_THRESHOLD = 72; // px to pull before triggering refresh
+
+function usePullToRefresh(onRefresh: () => Promise<void>) {
+  const [pullY, setPullY] = useState(0);       // current pull distance
+  const [refreshing, setRefreshing] = useState(false);
+  const startYRef = useRef(0);
+  const pullingRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if ((scrollRef.current?.scrollTop ?? 0) > 0) return; // only when at top
+    startYRef.current = e.touches[0].clientY;
+    pullingRef.current = true;
+  }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!pullingRef.current || refreshing) return;
+    const delta = e.touches[0].clientY - startYRef.current;
+    if (delta <= 0) { setPullY(0); return; }
+    // Rubber-band: resistance increases as you pull further
+    setPullY(Math.min(delta * 0.45, PULL_THRESHOLD + 20));
+  }, [refreshing]);
+
+  const onTouchEnd = useCallback(async () => {
+    if (!pullingRef.current) return;
+    pullingRef.current = false;
+    if (pullY >= PULL_THRESHOLD) {
+      setRefreshing(true);
+      setPullY(0);
+      await onRefresh();
+      setRefreshing(false);
+    } else {
+      setPullY(0);
+    }
+  }, [pullY, onRefresh]);
+
+  return { scrollRef, pullY, refreshing, onTouchStart, onTouchMove, onTouchEnd };
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
+
 export default function TripList({
   trips,
   onSelectTrip,
   onCreateTrip,
   onDeleteTrip,
   onLogout,
+  onRefresh,
 }: Props) {
   const [showCreate, setShowCreate] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pushState, setPushState] = useState<'loading' | 'subscribed' | 'not-subscribed' | 'unsupported'>('loading');
   const [notifToast, setNotifToast] = useState<string | null>(null);
+
+  const { scrollRef, pullY, refreshing, onTouchStart, onTouchMove, onTouchEnd } =
+    usePullToRefresh(onRefresh);
 
   // Check current push subscription state on mount
   useEffect(() => {
@@ -277,10 +325,13 @@ export default function TripList({
     }
   };
 
+  const pullProgress = Math.min(pullY / PULL_THRESHOLD, 1);
+  const iconRotation = pullProgress * 180;
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="h-screen bg-slate-50 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="bg-zinc-900 sticky top-0 z-30 border-b border-zinc-800 pt-safe">
+      <header className="bg-zinc-900 sticky top-0 z-30 border-b border-zinc-800 pt-safe flex-shrink-0">
         <div className="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center ring-1 ring-white/10">
@@ -331,6 +382,32 @@ export default function TripList({
           </div>
         </div>
       </header>
+
+      {/* Scrollable area with pull-to-refresh */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        {/* Pull indicator */}
+        <div
+          className="flex items-center justify-center overflow-hidden transition-all duration-200"
+          style={{ height: refreshing ? 56 : pullY }}
+        >
+          <div
+            className={`w-9 h-9 rounded-full flex items-center justify-center shadow-md ${
+              pullProgress >= 1 || refreshing ? 'bg-blue-500 text-white' : 'bg-white text-slate-400'
+            } transition-colors duration-150`}
+            style={{ transform: `rotate(${refreshing ? 0 : iconRotation}deg)` }}
+          >
+            <RefreshCw
+              size={16}
+              className={refreshing ? 'animate-spin' : ''}
+            />
+          </div>
+        </div>
 
       <main className="max-w-5xl mx-auto px-4 py-8 pb-safe">
         {trips.length === 0 ? (
@@ -388,6 +465,7 @@ export default function TripList({
           </>
         )}
       </main>
+      </div> {/* end scrollable */}
 
       {showCreate && (
         <CreateTripModal
