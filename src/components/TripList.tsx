@@ -432,7 +432,7 @@ export default function TripList({
       </header>
 
       {/* Scrollable area with pull-to-refresh */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-y-none" style={{ WebkitOverflowScrolling: 'touch' }}>
         {/* Pull indicator — height animates only when releasing or refreshing */}
         <div
           className="flex items-center justify-center overflow-hidden"
