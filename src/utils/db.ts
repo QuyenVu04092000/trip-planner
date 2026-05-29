@@ -94,8 +94,13 @@ function rowToMediaItem(r: Record<string, unknown>): MediaItem {
 // ── Trips ─────────────────────────────────────────────────────────────────────
 
 export async function fetchTrips(): Promise<Trip[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
   const { data, error } = await supabase
-    .from('trips').select('*').order('created_at', { ascending: false });
+    .from('trips')
+    .select('*')
+    .eq('user_id', user.id)          // explicit filter — belt + suspenders alongside RLS
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map(rowToTrip);
 }
