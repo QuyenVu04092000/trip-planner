@@ -51,6 +51,7 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
         <MapPicker
           onSelect={handleSelect}
           onClose={() => setMapOpen(false)}
+          initialValue={value}
         />
       )}
     </>
