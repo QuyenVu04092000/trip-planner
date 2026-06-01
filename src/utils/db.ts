@@ -96,13 +96,42 @@ function rowToMediaItem(r: Record<string, unknown>): MediaItem {
 export async function fetchTrips(): Promise<Trip[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
-  // Fetch own trips + shared trips — rely on RLS (trips_owner + trips_member_select policies)
-  const { data, error } = await supabase
+
+  // 1. Own trips — explicit filter, không phụ thuộc RLS
+  const { data: ownData, error: e1 } = await supabase
     .from('trips')
     .select('*')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []).map(rowToTrip);
+  if (e1) throw e1;
+
+  // 2. Shared trips — lấy trip_ids từ trip_members (role = 'member')
+  const { data: memberRows, error: e2 } = await supabase
+    .from('trip_members')
+    .select('trip_id')
+    .eq('user_id', user.id)
+    .eq('role', 'member');
+  if (e2) throw e2;
+
+  const sharedIds = (memberRows ?? []).map((r: any) => r.trip_id as string);
+  let sharedTrips: Trip[] = [];
+  if (sharedIds.length > 0) {
+    const { data: sharedData, error: e3 } = await supabase
+      .from('trips')
+      .select('*')
+      .in('id', sharedIds);
+    if (e3) throw e3;
+    sharedTrips = (sharedData ?? []).map(rowToTrip);
+  }
+
+  // 3. Gộp + dedup + sort
+  const own = (ownData ?? []).map(rowToTrip);
+  const merged = [...own];
+  for (const t of sharedTrips) {
+    if (!merged.find(x => x.id === t.id)) merged.push(t);
+  }
+  merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return merged;
 }
 
 export async function createTrip(trip: Trip): Promise<void> {
