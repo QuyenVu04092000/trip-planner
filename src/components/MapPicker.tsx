@@ -11,24 +11,38 @@ interface Props {
   onClose:  () => void;
 }
 
-interface Result {
-  display_name: string;
-  lat: number;
-  lon: number;
+interface Suggestion {
+  mapbox_id: string;
+  name: string;
+  place_formatted: string;
+  full_address?: string;
 }
 
-async function searchMapbox(q: string): Promise<Result[]> {
-  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&language=vi&country=VN&limit=6`;
+// Search Box API – suggest (gợi ý nhanh, có POI)
+async function suggestPlaces(q: string, sessionToken: string): Promise<Suggestion[]> {
+  const url = `https://api.mapbox.com/search/searchbox/v1/suggest?q=${encodeURIComponent(q)}&access_token=${MAPBOX_TOKEN}&session_token=${sessionToken}&language=vi&country=VN&limit=6`;
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
-  return (data.features ?? []).map((f: any) => ({
-    display_name: f.place_name,
-    lon: f.center[0],
-    lat: f.center[1],
-  }));
+  return data.suggestions ?? [];
 }
 
+// Search Box API – retrieve (lấy tọa độ khi user chọn)
+async function retrievePlace(mapboxId: string, sessionToken: string): Promise<{ lat: number; lon: number; name: string } | null> {
+  const url = `https://api.mapbox.com/search/searchbox/v1/retrieve/${mapboxId}?access_token=${MAPBOX_TOKEN}&session_token=${sessionToken}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const feature = data.features?.[0];
+  if (!feature) return null;
+  return {
+    name: feature.properties.full_address ?? feature.properties.name,
+    lon: feature.geometry.coordinates[0],
+    lat: feature.geometry.coordinates[1],
+  };
+}
+
+// Geocoding API – reverse geocode khi click map
 async function reverseGeocode(lat: number, lon: number): Promise<string> {
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${MAPBOX_TOKEN}&language=vi&limit=1`;
   const res = await fetch(url);
@@ -38,16 +52,19 @@ async function reverseGeocode(lat: number, lon: number): Promise<string> {
 }
 
 export default function MapPicker({ onSelect, onClose }: Props) {
-  const mapDivRef   = useRef<HTMLDivElement>(null);
-  const mapRef      = useRef<mapboxgl.Map | null>(null);
-  const markerRef   = useRef<mapboxgl.Marker | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapDivRef      = useRef<HTMLDivElement>(null);
+  const mapRef         = useRef<mapboxgl.Map | null>(null);
+  const markerRef      = useRef<mapboxgl.Marker | null>(null);
+  const debounceRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Session token: 1 UUID per lần mở MapPicker (Mapbox billing theo session)
+  const sessionToken   = useRef(crypto.randomUUID());
 
   const [query, setQuery]                     = useState('');
-  const [results, setResults]                 = useState<Result[]>([]);
+  const [suggestions, setSuggestions]         = useState<Suggestion[]>([]);
   const [noResults, setNoResults]             = useState(false);
   const [showDropdown, setShowDropdown]       = useState(false);
   const [searching, setSearching]             = useState(false);
+  const [retrieving, setRetrieving]           = useState(false);
   const [selectedAddress, setSelectedAddress] = useState('');
   const [reversing, setReversing]             = useState(false);
 
@@ -95,26 +112,34 @@ export default function MapPicker({ onSelect, onClose }: Props) {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!value.trim() || value.length < 2) {
-      setResults([]); setShowDropdown(false); setNoResults(false); return;
+      setSuggestions([]); setShowDropdown(false); setNoResults(false); return;
     }
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const data = await searchMapbox(value);
-        setResults(data);
+        const data = await suggestPlaces(value, sessionToken.current);
+        setSuggestions(data);
         setShowDropdown(data.length > 0);
         setNoResults(data.length === 0);
       } finally {
         setSearching(false);
       }
-    }, 400);
+    }, 300);
   }, []);
 
-  function selectResult(r: Result) {
-    if (mapRef.current) placeMarker(mapRef.current, r.lat, r.lon);
-    setSelectedAddress(r.display_name);
-    setQuery(r.display_name);
+  async function selectSuggestion(s: Suggestion) {
     setShowDropdown(false);
+    setQuery(s.full_address ?? `${s.name}, ${s.place_formatted}`);
+    setRetrieving(true);
+    try {
+      const detail = await retrievePlace(s.mapbox_id, sessionToken.current);
+      if (detail && mapRef.current) {
+        placeMarker(mapRef.current, detail.lat, detail.lon);
+        setSelectedAddress(detail.name);
+      }
+    } finally {
+      setRetrieving(false);
+    }
   }
 
   return (
@@ -133,25 +158,30 @@ export default function MapPicker({ onSelect, onClose }: Props) {
             type="text"
             value={query}
             onChange={e => handleSearch(e.target.value)}
-            onFocus={() => { if (results.length > 0) setShowDropdown(true); }}
+            onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
             placeholder="Tìm địa điểm..."
             autoComplete="off"
             className="w-full pl-8 pr-8 py-2.5 bg-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:bg-white border border-transparent focus:border-blue-400 transition-all placeholder:text-slate-400"
           />
-          {searching && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 animate-spin" />}
+          {(searching || retrieving) && (
+            <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 animate-spin" />
+          )}
         </div>
       </div>
 
       {/* Dropdown */}
       {(showDropdown || noResults) && !searching && (
         <div className="absolute left-0 right-0 z-30 bg-white border-b border-slate-100 shadow-lg max-h-64 overflow-y-auto" style={{ top: '4.5rem' }}>
-          {results.length > 0
+          {suggestions.length > 0
             ? <>
-                {results.map((r, i) => (
-                  <button key={i} onMouseDown={() => selectResult(r)}
+                {suggestions.map((s) => (
+                  <button key={s.mapbox_id} onMouseDown={() => selectSuggestion(s)}
                     className="w-full flex items-start gap-2.5 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-50 last:border-0">
                     <MapPin size={13} className="flex-shrink-0 text-slate-300 mt-0.5" />
-                    <span className="text-sm text-slate-700 leading-snug">{r.display_name}</span>
+                    <div>
+                      <p className="text-sm text-slate-700 leading-snug">{s.name}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{s.place_formatted}</p>
+                    </div>
                   </button>
                 ))}
                 <a
@@ -188,7 +218,7 @@ export default function MapPicker({ onSelect, onClose }: Props) {
 
       {/* Footer */}
       <div className="px-4 py-3 pb-safe-5 bg-white border-t border-slate-100 min-h-[72px] flex items-center z-20">
-        {reversing ? (
+        {reversing || retrieving ? (
           <div className="w-full flex items-center justify-center gap-2 text-slate-400 text-sm">
             <Loader2 size={14} className="animate-spin" /> Đang lấy địa chỉ...
           </div>
