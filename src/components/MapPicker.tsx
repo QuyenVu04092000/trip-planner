@@ -18,23 +18,30 @@ interface Props {
 
 interface Result {
   display_name: string;
-  lat: string;
-  lon: string;
+  lat: number;
+  lon: number;
 }
 
-async function searchNominatim(q: string): Promise<Result[]> {
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&accept-language=vi&countrycodes=vn`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+
+async function searchMapbox(q: string): Promise<Result[]> {
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&language=vi&country=VN&limit=6`;
+  const res = await fetch(url);
   if (!res.ok) return [];
-  return res.json();
+  const data = await res.json();
+  return (data.features ?? []).map((f: any) => ({
+    display_name: f.place_name,
+    lon: f.center[0],
+    lat: f.center[1],
+  }));
 }
 
 async function reverseGeocode(lat: number, lon: number): Promise<string> {
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=vi`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${MAPBOX_TOKEN}&language=vi&limit=1`;
+  const res = await fetch(url);
   if (!res.ok) return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
   const data = await res.json();
-  return data.display_name ?? `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  return data.features?.[0]?.place_name ?? `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 }
 
 export default function MapPicker({ onSelect, onClose }: Props) {
@@ -99,7 +106,7 @@ export default function MapPicker({ onSelect, onClose }: Props) {
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const data = await searchNominatim(value);
+        const data = await searchMapbox(value);
         setResults(data);
         setShowDropdown(data.length > 0);
         setNoResults(data.length === 0);
@@ -110,8 +117,8 @@ export default function MapPicker({ onSelect, onClose }: Props) {
   }, []);
 
   function selectResult(r: Result) {
-    const lat = parseFloat(r.lat);
-    const lng = parseFloat(r.lon);
+    const lat = r.lat;
+    const lng = r.lon;
     if (mapRef.current) placeMarker(mapRef.current, lat, lng);
     setSelectedAddress(r.display_name);
     setQuery(r.display_name);
