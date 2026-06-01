@@ -1,15 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { X, MapPin, Check, Search, Loader2, ExternalLink } from 'lucide-react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
-// Fix Leaflet marker icons in Vite
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
 interface Props {
   onSelect: (address: string) => void;
@@ -21,8 +16,6 @@ interface Result {
   lat: number;
   lon: number;
 }
-
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
 async function searchMapbox(q: string): Promise<Result[]> {
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&language=vi&country=VN&limit=6`;
@@ -45,36 +38,35 @@ async function reverseGeocode(lat: number, lon: number): Promise<string> {
 }
 
 export default function MapPicker({ onSelect, onClose }: Props) {
-  const mapDivRef    = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<L.Map | null>(null);
-  const markerRef    = useRef<L.Marker | null>(null);
-  const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapDivRef   = useRef<HTMLDivElement>(null);
+  const mapRef      = useRef<mapboxgl.Map | null>(null);
+  const markerRef   = useRef<mapboxgl.Marker | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [query, setQuery]               = useState('');
-  const [results, setResults]           = useState<Result[]>([]);
-  const [noResults, setNoResults]       = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [searching, setSearching]       = useState(false);
+  const [query, setQuery]                     = useState('');
+  const [results, setResults]                 = useState<Result[]>([]);
+  const [noResults, setNoResults]             = useState(false);
+  const [showDropdown, setShowDropdown]       = useState(false);
+  const [searching, setSearching]             = useState(false);
   const [selectedAddress, setSelectedAddress] = useState('');
-  const [reversing, setReversing]       = useState(false);
+  const [reversing, setReversing]             = useState(false);
 
-  // Init Leaflet map
+  // Init Mapbox GL map
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return;
 
-    const map = L.map(mapDivRef.current, {
-      center: [16.0, 106.0],
-      zoom: 6,
-      zoomControl: true,
+    const map = new mapboxgl.Map({
+      container: mapDivRef.current,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [106.0, 16.0],
+      zoom: 5,
+      language: 'vi',
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map);
+    map.addControl(new mapboxgl.NavigationControl(), 'top-left');
 
     map.on('click', async (e) => {
-      const { lat, lng } = e.latlng;
+      const { lat, lng } = e.lngLat;
       placeMarker(map, lat, lng);
       setShowDropdown(false);
       setReversing(true);
@@ -91,10 +83,12 @@ export default function MapPicker({ onSelect, onClose }: Props) {
     };
   }, []);
 
-  function placeMarker(map: L.Map, lat: number, lng: number) {
+  function placeMarker(map: mapboxgl.Map, lat: number, lng: number) {
     markerRef.current?.remove();
-    markerRef.current = L.marker([lat, lng]).addTo(map);
-    map.setView([lat, lng], Math.max(map.getZoom(), 15));
+    markerRef.current = new mapboxgl.Marker({ color: '#3b82f6' })
+      .setLngLat([lng, lat])
+      .addTo(map);
+    map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15), duration: 800 });
   }
 
   const handleSearch = useCallback((value: string) => {
@@ -117,9 +111,7 @@ export default function MapPicker({ onSelect, onClose }: Props) {
   }, []);
 
   function selectResult(r: Result) {
-    const lat = r.lat;
-    const lng = r.lon;
-    if (mapRef.current) placeMarker(mapRef.current, lat, lng);
+    if (mapRef.current) placeMarker(mapRef.current, r.lat, r.lon);
     setSelectedAddress(r.display_name);
     setQuery(r.display_name);
     setShowDropdown(false);
