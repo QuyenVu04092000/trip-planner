@@ -9,6 +9,7 @@ import { registerSW, triggerPushCheck, autoSubscribeIfStandalone } from './utils
 import TripList from './components/TripList';
 import TripDetail from './components/TripDetail';
 import AuthPage from './components/AuthPage';
+import InvitePage from './components/InvitePage';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -19,6 +20,18 @@ export default function App() {
 
   // Register service worker once on mount
   useEffect(() => { registerSW(); }, []);
+
+  // Detect invite link via hash: #/invite/:token
+  useEffect(() => {
+    function checkHash() {
+      const hash = window.location.hash;
+      const match = hash.match(/^#\/invite\/([^/?]+)/);
+      if (match) setPage({ page: 'invite', token: match[1] });
+    }
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
 
   // Auth state
   useEffect(() => {
@@ -96,7 +109,20 @@ export default function App() {
     );
   }
 
-  if (!session) return <AuthPage />;
+  if (!session) {
+    // Save pending invite token so we can redirect after login
+    if (page.page === 'invite') sessionStorage.setItem('pendingInvite', page.token);
+    return <AuthPage />;
+  }
+
+  // After login, check for pending invite
+  if (page.page === 'list') {
+    const pending = sessionStorage.getItem('pendingInvite');
+    if (pending) {
+      sessionStorage.removeItem('pendingInvite');
+      setPage({ page: 'invite', token: pending });
+    }
+  }
 
   if (loading) {
     return (
@@ -106,6 +132,24 @@ export default function App() {
           <p className="text-slate-400 text-sm">Đang tải dữ liệu...</p>
         </div>
       </div>
+    );
+  }
+
+  if (page.page === 'invite') {
+    return (
+      <InvitePage
+        token={page.token}
+        onAccepted={async (tripId) => {
+          window.location.hash = '';
+          const data = await fetchTrips();
+          setTrips(data);
+          setPage({ page: 'trip', tripId, tab: 'plan' });
+        }}
+        onDeclined={() => {
+          window.location.hash = '';
+          setPage({ page: 'list' });
+        }}
+      />
     );
   }
 

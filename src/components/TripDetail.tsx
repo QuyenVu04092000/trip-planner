@@ -6,8 +6,9 @@ import {
   TableProperties,
   GalleryHorizontal,
   Pencil,
+  UserPlus,
 } from "lucide-react";
-import type { Trip, Activity, MediaItem } from "../types";
+import type { Trip, Activity, MediaItem, TripMember } from "../types";
 import {
   fetchActivities,
   createActivity,
@@ -15,10 +16,14 @@ import {
   deleteActivity,
   fetchMediaItems,
   updateTrip,
+  fetchTripMembers,
+  isOwner as fetchIsOwner,
 } from "../utils/db";
+import { supabase } from "../utils/supabase";
 import Itinerary from "./Itinerary";
 import Memory from "./Memory";
 import CreateTripModal from "./CreateTripModal";
+import InviteModal from "./InviteModal";
 
 interface Props {
   trip: Trip;
@@ -34,6 +39,10 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [planLoading, setPlanLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [members, setMembers] = useState<TripMember[]>([]);
+  const [ownerStatus, setOwnerStatus] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState('');
 
   useEffect(() => {
     setPlanLoading(true);
@@ -42,6 +51,11 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
       .catch(console.error)
       .finally(() => setPlanLoading(false));
     fetchMediaItems(trip.id).then(setMedia).catch(console.error);
+    fetchTripMembers(trip.id).then(setMembers).catch(console.error);
+    fetchIsOwner(trip.id).then(setOwnerStatus);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id);
+    });
   }, [trip.id]);
 
   const handleAdd = useCallback(
@@ -151,12 +165,41 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
                 </span>
               </div>
             </div>
+            {/* Member avatars */}
+            {members.length > 1 && (
+              <div className="flex items-center -space-x-2 flex-shrink-0">
+                {members.slice(0, 3).map((m) => {
+                  const colors = ['bg-blue-400','bg-violet-400','bg-pink-400','bg-amber-400','bg-emerald-400'];
+                  let hash = 0;
+                  for (const c of m.userEmail) hash = (hash * 31 + c.charCodeAt(0)) & 0xfffff;
+                  const bg = colors[hash % colors.length];
+                  return (
+                    <div key={m.id} className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold ${bg}`}>
+                      {m.userEmail.slice(0, 2).toUpperCase()}
+                    </div>
+                  );
+                })}
+                {members.length > 3 && (
+                  <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-slate-500 text-[10px] font-bold">
+                    +{members.length - 3}
+                  </div>
+                )}
+              </div>
+            )}
             <button
-              onClick={() => setShowEdit(true)}
+              onClick={() => setShowInvite(true)}
               className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
             >
-              <Pencil size={14} />
+              <UserPlus size={14} />
             </button>
+            {ownerStatus && (
+              <button
+                onClick={() => setShowEdit(true)}
+                className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
+              >
+                <Pencil size={14} />
+              </button>
+            )}
           </div>
 
           {/* Tab bar — same glass surface, just a separator line */}
@@ -240,6 +283,16 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
           initialTrip={trip}
           onClose={() => setShowEdit(false)}
           onSave={handleEditSave}
+        />
+      )}
+
+      {showInvite && (
+        <InviteModal
+          trip={trip}
+          currentUserId={currentUserId}
+          isOwner={ownerStatus}
+          onClose={() => setShowInvite(false)}
+          onLeave={onBack}
         />
       )}
     </div>

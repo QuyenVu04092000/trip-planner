@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Trip, Activity, MediaItem } from '../types';
+import type { Trip, Activity, MediaItem, TripMember, TripInvite } from '../types';
 import exifr from 'exifr';
 
 
@@ -96,10 +96,10 @@ function rowToMediaItem(r: Record<string, unknown>): MediaItem {
 export async function fetchTrips(): Promise<Trip[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
+  // Fetch own trips + shared trips — rely on RLS (trips_owner + trips_member_select policies)
   const { data, error } = await supabase
     .from('trips')
     .select('*')
-    .eq('user_id', user.id)          // explicit filter — belt + suspenders alongside RLS
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map(rowToTrip);
@@ -107,8 +107,17 @@ export async function fetchTrips(): Promise<Trip[]> {
 
 export async function createTrip(trip: Trip): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
-  const { error } = await supabase.from('trips').insert({ ...tripToRow(trip), user_id: user?.id });
+  if (!user) throw new Error('Not authenticated');
+  const { error } = await supabase.from('trips').insert({ ...tripToRow(trip), user_id: user.id });
   if (error) throw error;
+  // Add owner to trip_members
+  await supabase.from('trip_members').insert({
+    id: `mem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    trip_id: trip.id,
+    user_id: user.id,
+    user_email: user.email ?? '',
+    role: 'owner',
+  });
 }
 
 export async function updateTrip(trip: Trip): Promise<void> {
@@ -491,4 +500,110 @@ export async function deleteMediaItem(item: MediaItem): Promise<void> {
   const { error } = await supabase.from('media_items').delete().eq('id', item.id);
   if (error) throw error;
   invalidateMediaCache(item.tripId);
+}
+
+// ── Invite / Members ──────────────────────────────────────────────────────────
+
+function rowToMember(r: Record<string, unknown>): TripMember {
+  return {
+    id: r.id as string,
+    tripId: r.trip_id as string,
+    userId: r.user_id as string,
+    userEmail: (r.user_email as string) ?? '',
+    role: (r.role as 'owner' | 'member'),
+    joinedAt: r.joined_at as string,
+  };
+}
+
+function rowToInvite(r: Record<string, unknown>): TripInvite {
+  return {
+    id: r.id as string,
+    tripId: r.trip_id as string,
+    token: r.token as string,
+    createdBy: r.created_by as string,
+    tripName: (r.trip_name as string) ?? '',
+    tripEmoji: (r.trip_emoji as string) ?? '✈️',
+    ownerEmail: (r.owner_email as string) ?? '',
+    status: r.status as 'active' | 'expired',
+    expiresAt: r.expires_at as string,
+    createdAt: r.created_at as string,
+  };
+}
+
+export async function fetchTripMembers(tripId: string): Promise<TripMember[]> {
+  const { data, error } = await supabase
+    .from('trip_members').select('*').eq('trip_id', tripId)
+    .order('joined_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(rowToMember);
+}
+
+export async function createInvite(trip: Trip): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  const token = crypto.randomUUID();
+  const id = `inv_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await supabase.from('trip_invites').insert({
+    id,
+    trip_id: trip.id,
+    token,
+    created_by: user.id,
+    trip_name: trip.name,
+    trip_emoji: trip.emoji,
+    owner_email: user.email ?? '',
+    status: 'active',
+    expires_at: expiresAt,
+  });
+  if (error) throw error;
+  return token;
+}
+
+export async function getInviteByToken(token: string): Promise<TripInvite | null> {
+  const { data, error } = await supabase
+    .from('trip_invites').select('*').eq('token', token).single();
+  if (error || !data) return null;
+  return rowToInvite(data as Record<string, unknown>);
+}
+
+export async function acceptInvite(token: string): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const invite = await getInviteByToken(token);
+  if (!invite || invite.status !== 'active') return null;
+  if (new Date(invite.expiresAt) < new Date()) return null;
+
+  // Insert member (ignore if already member)
+  await supabase.from('trip_members').upsert({
+    id: `mem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    trip_id: invite.tripId,
+    user_id: user.id,
+    user_email: user.email ?? '',
+    role: 'member',
+  }, { onConflict: 'trip_id,user_id', ignoreDuplicates: true });
+
+  return invite.tripId;
+}
+
+export async function leaveTrip(tripId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { error } = await supabase.from('trip_members')
+    .delete().eq('trip_id', tripId).eq('user_id', user.id).eq('role', 'member');
+  if (error) throw error;
+}
+
+export async function removeMember(tripId: string, userId: string): Promise<void> {
+  const { error } = await supabase.from('trip_members')
+    .delete().eq('trip_id', tripId).eq('user_id', userId).eq('role', 'member');
+  if (error) throw error;
+}
+
+export async function isOwner(tripId: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data } = await supabase.from('trip_members')
+    .select('role').eq('trip_id', tripId).eq('user_id', user.id).single();
+  return (data as any)?.role === 'owner';
 }

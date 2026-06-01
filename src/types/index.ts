@@ -38,6 +38,29 @@ export interface MediaItem {
   thumbnailUrl?: string;
 }
 
+export interface TripMember {
+  id: string;
+  tripId: string;
+  userId: string;
+  userEmail: string;
+  role: 'owner' | 'member';
+  joinedAt: string;
+}
+
+export interface TripInvite {
+  id: string;
+  tripId: string;
+  token: string;
+  createdBy: string;
+  tripName: string;
+  tripEmoji: string;
+  ownerEmail: string;
+  status: 'active' | 'expired';
+  expiresAt: string;
+  createdAt: string;
+}
+
 export type AppPage =
   | { page: 'list' }
-  | { page: 'trip'; tripId: string; tab: 'plan' | 'memory' };
+  | { page: 'trip'; tripId: string; tab: 'plan' | 'memory' }
+  | { page: 'invite'; token: string };
