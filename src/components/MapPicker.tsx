@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, MapPin, Check, Search, Loader2 } from 'lucide-react';
+import { X, MapPin, Check, Search, Loader2, ExternalLink } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -45,6 +45,7 @@ export default function MapPicker({ onSelect, onClose }: Props) {
 
   const [query, setQuery]               = useState('');
   const [results, setResults]           = useState<Result[]>([]);
+  const [noResults, setNoResults]       = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [searching, setSearching]       = useState(false);
   const [selectedAddress, setSelectedAddress] = useState('');
@@ -93,7 +94,7 @@ export default function MapPicker({ onSelect, onClose }: Props) {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!value.trim() || value.length < 2) {
-      setResults([]); setShowDropdown(false); return;
+      setResults([]); setShowDropdown(false); setNoResults(false); return;
     }
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
@@ -101,6 +102,7 @@ export default function MapPicker({ onSelect, onClose }: Props) {
         const data = await searchNominatim(value);
         setResults(data);
         setShowDropdown(data.length > 0);
+        setNoResults(data.length === 0);
       } finally {
         setSearching(false);
       }
@@ -142,15 +144,43 @@ export default function MapPicker({ onSelect, onClose }: Props) {
       </div>
 
       {/* Dropdown */}
-      {showDropdown && results.length > 0 && (
+      {(showDropdown || noResults) && !searching && (
         <div className="absolute left-0 right-0 z-30 bg-white border-b border-slate-100 shadow-lg max-h-64 overflow-y-auto" style={{ top: '4.5rem' }}>
-          {results.map((r, i) => (
-            <button key={i} onMouseDown={() => selectResult(r)}
-              className="w-full flex items-start gap-2.5 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-50 last:border-0">
-              <MapPin size={13} className="flex-shrink-0 text-slate-300 mt-0.5" />
-              <span className="text-sm text-slate-700 leading-snug">{r.display_name}</span>
-            </button>
-          ))}
+          {results.length > 0
+            ? <>
+                {results.map((r, i) => (
+                  <button key={i} onMouseDown={() => selectResult(r)}
+                    className="w-full flex items-start gap-2.5 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-50 last:border-0">
+                    <MapPin size={13} className="flex-shrink-0 text-slate-300 mt-0.5" />
+                    <span className="text-sm text-slate-700 leading-snug">{r.display_name}</span>
+                  </button>
+                ))}
+                <a
+                  href={`https://www.google.com/maps/search/${encodeURIComponent(query)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-4 py-2.5 text-sm text-blue-500 font-medium border-t border-slate-100 hover:bg-slate-50 transition-colors"
+                >
+                  <ExternalLink size={13} />
+                  Tìm thêm trên Google Maps
+                </a>
+              </>
+            : (
+              <div className="px-4 py-3">
+                <p className="text-sm text-slate-400 mb-2">Không tìm thấy kết quả.</p>
+                <a
+                  href={`https://www.google.com/maps/search/${encodeURIComponent(query)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-blue-500 font-medium"
+                >
+                  <ExternalLink size={13} />
+                  Tìm trên Google Maps
+                </a>
+                <p className="text-xs text-slate-400 mt-1">Xong rồi quay lại nhấn vào bản đồ để chọn vị trí.</p>
+              </div>
+            )
+          }
         </div>
       )}
 
