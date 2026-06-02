@@ -35,6 +35,7 @@ jobs:
           VITE_SUPABASE_URL:      ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_VAPID_PUBLIC_KEY:  ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_MAPBOX_TOKEN:      ${{ secrets.VITE_MAPBOX_TOKEN }}
           # Base path = /<repo-name>/ for GitHub Pages project sites
           GITHUB_REPOSITORY:      ${{ github.repository }}
         run: npm run build
