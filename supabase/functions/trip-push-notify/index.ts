@@ -138,23 +138,35 @@ Deno.serve(async (req) => {
         const msg = buildMessage(days, trip.emoji, trip.name);
         if (!msg) continue;
 
-        const { data: subs } = await supabase
-          .from("push_subscriptions")
-          .select("endpoint, p256dh, auth_key")
-          .eq("user_id", trip.user_id);
+        // Get ALL members of this trip (owner + invited members)
+        const { data: members } = await supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", trip.id);
+
+        const memberIds = (members ?? []).map((m: { user_id: string }) => m.user_id);
+        // Fallback: always include the trip owner even if trip_members is empty
+        if (!memberIds.includes(trip.user_id)) memberIds.push(trip.user_id);
 
         console.log(
-          `[cron] "${trip.name}" → ${subs?.length ?? 0} subscription(s), days=${days}`,
+          `[cron] "${trip.name}" → ${memberIds.length} member(s), days=${days}`,
         );
 
-        for (const sub of subs ?? []) {
-          const result = await sendToSub(supabase, sub, {
-            ...msg,
-            tag: `${trip.id}_d${days}`,
-          });
-          if (result === "sent") {
-            totalSent++;
-            details.push(`✓ ${trip.name} (${days}d)`);
+        for (const userId of memberIds) {
+          const { data: subs } = await supabase
+            .from("push_subscriptions")
+            .select("endpoint, p256dh, auth_key")
+            .eq("user_id", userId);
+
+          for (const sub of subs ?? []) {
+            const result = await sendToSub(supabase, sub, {
+              ...msg,
+              tag: `${trip.id}_d${days}`,
+            });
+            if (result === "sent") {
+              totalSent++;
+              details.push(`✓ ${trip.name} (${days}d)`);
+            }
           }
         }
       }

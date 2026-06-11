@@ -5,6 +5,7 @@ import { fetchTrips, createTrip, deleteTrip } from './utils/db';
 import { supabase } from './utils/supabase';
 import { checkAndNotify } from './utils/notifications';
 import { registerSW, triggerPushCheck, autoSubscribeIfStandalone } from './utils/pushClient';
+import { cancelActivityNotifications } from './utils/activityNotifications';
 
 import TripList from './components/TripList';
 import TripDetail from './components/TripDetail';
@@ -95,6 +96,7 @@ export default function App() {
   }, []);
 
   const handleLogout = useCallback(async () => {
+    cancelActivityNotifications();
     await supabase.auth.signOut();
   }, []);
 

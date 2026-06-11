@@ -20,6 +20,7 @@ import {
   isOwner as fetchIsOwner,
 } from "../utils/db";
 import { supabase } from "../utils/supabase";
+import { scheduleActivityNotifications } from "../utils/activityNotifications";
 import Itinerary from "./Itinerary";
 import Memory from "./Memory";
 import CreateTripModal from "./CreateTripModal";
@@ -47,7 +48,10 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
   useEffect(() => {
     setPlanLoading(true);
     fetchActivities(trip.id)
-      .then(setActivities)
+      .then((acts) => {
+        setActivities(acts);
+        scheduleActivityNotifications(acts);
+      })
       .catch(console.error)
       .finally(() => setPlanLoading(false));
     fetchMediaItems(trip.id).then(setMedia).catch(console.error);
@@ -61,7 +65,11 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
   const handleAdd = useCallback(
     async (fields: Omit<Activity, "id" | "tripId" | "createdAt">) => {
       const newAct = await createActivity(trip.id, fields);
-      setActivities((prev) => [...prev, newAct]);
+      setActivities((prev) => {
+        const next = [...prev, newAct];
+        scheduleActivityNotifications(next);
+        return next;
+      });
     },
     [trip.id],
   );
@@ -72,9 +80,11 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
       fields: Partial<Omit<Activity, "id" | "tripId" | "createdAt">>,
     ) => {
       await updateActivity(id, fields);
-      setActivities((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, ...fields } : a)),
-      );
+      setActivities((prev) => {
+        const next = prev.map((a) => (a.id === id ? { ...a, ...fields } : a));
+        scheduleActivityNotifications(next);
+        return next;
+      });
     },
     [],
   );
