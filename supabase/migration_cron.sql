@@ -19,7 +19,7 @@ SELECT cron.schedule(
     SELECT net.http_get(
       url     := 'https://ykrxbyvjxmnqvqawlwyx.supabase.co/functions/v1/trip-push-notify',
       headers := jsonb_build_object(
-        'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrcnhieXZqeG1ucXZxYXdsd3l4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTg2MjEzOSwiZXhwIjoyMDk1NDM4MTM5fQ.-t0OD2fdkbHdf2W_UrsqZG2zgVwRUUHOMZWS9x69Qng',
+        'Authorization', 'Bearer <SERVICE_ROLE_KEY>',
         'Content-Type',  'application/json'
       )
     )
@@ -34,7 +34,7 @@ SELECT cron.schedule(
     SELECT net.http_get(
       url     := 'https://ykrxbyvjxmnqvqawlwyx.supabase.co/functions/v1/send-activity-reminders',
       headers := jsonb_build_object(
-        'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrcnhieXZqeG1ucXZxYXdsd3l4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTg2MjEzOSwiZXhwIjoyMDk1NDM4MTM5fQ.-t0OD2fdkbHdf2W_UrsqZG2zgVwRUUHOMZWS9x69Qng',
+        'Authorization', 'Bearer <SERVICE_ROLE_KEY>',
         'Content-Type',  'application/json'
       )
     )
