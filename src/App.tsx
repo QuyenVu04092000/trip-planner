@@ -12,26 +12,55 @@ import TripDetail from './components/TripDetail';
 import AuthPage from './components/AuthPage';
 import InvitePage from './components/InvitePage';
 
+// ── Hash helpers ──────────────────────────────────────────────────────────────
+
+function hashFromPage(page: AppPage): string {
+  if (page.page === 'trip')   return `#/trip/${page.tripId}/${page.tab}`;
+  if (page.page === 'invite') return `#/invite/${page.token}`;
+  return '#/';
+}
+
+function pageFromHash(hash: string): AppPage | null {
+  const invite = hash.match(/^#\/invite\/([^/?]+)/);
+  if (invite) return { page: 'invite', token: invite[1] };
+
+  const trip = hash.match(/^#\/trip\/([^/]+)\/([^/]+)/);
+  if (trip) {
+    const tab = trip[2];
+    const validTab = ['plan', 'memory', 'expense'].includes(tab) ? tab : 'plan';
+    return { page: 'trip', tripId: trip[1], tab: validTab as 'plan' | 'memory' | 'expense' };
+  }
+  return null;
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+
 export default function App() {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession]       = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState<AppPage>({ page: 'list' });
+  const [trips, setTrips]           = useState<Trip[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [page, setPageState]        = useState<AppPage>(() => pageFromHash(window.location.hash) ?? { page: 'list' });
+
+  // Keep hash in sync whenever page changes
+  const setPage = useCallback((next: AppPage) => {
+    setPageState(next);
+    const hash = hashFromPage(next);
+    if (window.location.hash !== hash) window.location.hash = hash;
+  }, []);
 
   // Register service worker once on mount
   useEffect(() => { registerSW(); }, []);
 
-  // Detect invite link via hash: #/invite/:token
+  // Sync page when user presses browser Back/Forward
   useEffect(() => {
-    function checkHash() {
-      const hash = window.location.hash;
-      const match = hash.match(/^#\/invite\/([^/?]+)/);
-      if (match) setPage({ page: 'invite', token: match[1] });
+    function onHashChange() {
+      const next = pageFromHash(window.location.hash);
+      if (next) setPageState(next);
+      else setPageState({ page: 'list' });
     }
-    checkHash();
-    window.addEventListener('hashchange', checkHash);
-    return () => window.removeEventListener('hashchange', checkHash);
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
   // Auth state
@@ -42,22 +71,20 @@ export default function App() {
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setSession(session);
-      if (!session) { setTrips([]); setPage({ page: 'list' }); }
+      if (!session) { setTrips([]); setPageState({ page: 'list' }); window.location.hash = '#/'; }
     });
     return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!session?.user?.id) return;
-    // If running as installed PWA and permission already granted, re-subscribe
-    // in the correct SW context so background push works on iOS.
     autoSubscribeIfStandalone();
     setLoading(true);
     fetchTrips()
       .then((data) => { setTrips(data); checkAndNotify(data); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [session?.user?.id]); // stable string — not the session object (avoids re-fetch on token refresh)
+  }, [session?.user?.id]);
 
   const handleCreateTrip = useCallback(async (data: Omit<Trip, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString();
@@ -70,7 +97,7 @@ export default function App() {
     await createTrip(trip);
     setTrips(prev => [trip, ...prev]);
     setPage({ page: 'trip', tripId: trip.id, tab: 'plan' });
-  }, []);
+  }, [setPage]);
 
   const handleDeleteTrip = useCallback(async (tripId: string) => {
     await deleteTrip(tripId);
@@ -86,10 +113,9 @@ export default function App() {
   const handleUpdateTrip = useCallback((updated: Trip) => {
     setTrips(prev => {
       const next = prev.map(t => t.id === updated.id ? updated : t);
-      checkAndNotify(next); // browser notification khi app đang mở
+      checkAndNotify(next);
       return next;
     });
-    // Trigger push ngay nếu ngày mới khớp 1/3/7 ngày (hoạt động kể cả khi app đóng)
     if (updated.startDate) {
       triggerPushCheck(updated.id, updated.name, updated.emoji, updated.startDate);
     }
@@ -99,6 +125,8 @@ export default function App() {
     cancelActivityNotifications();
     await supabase.auth.signOut();
   }, []);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   if (authLoading) {
     return (
@@ -112,7 +140,6 @@ export default function App() {
   }
 
   if (!session) {
-    // Save pending invite token so we can redirect after login
     if (page.page === 'invite') sessionStorage.setItem('pendingInvite', page.token);
     return <AuthPage />;
   }
@@ -142,15 +169,11 @@ export default function App() {
       <InvitePage
         token={page.token}
         onAccepted={async (tripId) => {
-          window.location.hash = '';
           const data = await fetchTrips();
           setTrips(data);
           setPage({ page: 'trip', tripId, tab: 'plan' });
         }}
-        onDeclined={() => {
-          window.location.hash = '';
-          setPage({ page: 'list' });
-        }}
+        onDeclined={() => setPage({ page: 'list' })}
       />
     );
   }
@@ -161,7 +184,9 @@ export default function App() {
       return (
         <TripDetail
           trip={trip}
+          initialTab={page.tab}
           onBack={() => setPage({ page: 'list' })}
+          onTabChange={(tab) => setPage({ page: 'trip', tripId: trip.id, tab })}
           onTripUpdate={handleUpdateTrip}
         />
       );

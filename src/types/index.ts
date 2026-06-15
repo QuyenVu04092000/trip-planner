@@ -60,7 +60,44 @@ export interface TripInvite {
   createdAt: string;
 }
 
+export interface TripFund {
+  id: string;
+  tripId: string;
+  description: string;
+  amountPerPerson: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface TripFundPayment {
+  id: string;
+  fundId: string;
+  tripId: string;
+  userId: string;
+  userEmail: string;
+  paid: boolean;
+  paidAt: string | null;
+}
+
+export interface ExpenseSplit {
+  userId: string;
+  email: string;
+  amount: number;
+}
+
+export interface TripExpense {
+  id: string;
+  tripId: string;
+  description: string;
+  amount: number;
+  paidBy: string;       // user_id
+  paidByEmail: string;
+  splits: ExpenseSplit[];
+  date: string;
+  createdAt: string;
+}
+
 export type AppPage =
   | { page: 'list' }
-  | { page: 'trip'; tripId: string; tab: 'plan' | 'memory' }
+  | { page: 'trip'; tripId: string; tab: 'plan' | 'memory' | 'expense' }
   | { page: 'invite'; token: string };

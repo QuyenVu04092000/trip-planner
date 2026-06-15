@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Trip, Activity, MediaItem, TripMember, TripInvite } from '../types';
+import type { Trip, Activity, MediaItem, TripMember, TripInvite, TripExpense, TripFund, TripFundPayment } from '../types';
 import exifr from 'exifr';
 
 
@@ -635,4 +635,148 @@ export async function isOwner(tripId: string): Promise<boolean> {
   const { data } = await supabase.from('trip_members')
     .select('role').eq('trip_id', tripId).eq('user_id', user.id).single();
   return (data as any)?.role === 'owner';
+}
+
+// ── Trip Expenses ─────────────────────────────────────────────────────────────
+
+function rowToExpense(r: Record<string, unknown>): TripExpense {
+  return {
+    id:           r.id as string,
+    tripId:       r.trip_id as string,
+    description:  r.description as string,
+    amount:       Number(r.amount),
+    paidBy:       r.paid_by as string,
+    paidByEmail:  r.paid_by_email as string,
+    splits:       (r.splits as TripExpense['splits']) ?? [],
+    date:         (r.date as string) ?? '',
+    createdAt:    r.created_at as string,
+  };
+}
+
+export async function fetchExpenses(tripId: string): Promise<TripExpense[]> {
+  const { data, error } = await supabase
+    .from('trip_expenses')
+    .select('*')
+    .eq('trip_id', tripId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(rowToExpense);
+}
+
+export async function createExpense(expense: TripExpense): Promise<void> {
+  const { error } = await supabase.from('trip_expenses').insert({
+    id:            expense.id,
+    trip_id:       expense.tripId,
+    description:   expense.description,
+    amount:        expense.amount,
+    paid_by:       expense.paidBy,
+    paid_by_email: expense.paidByEmail,
+    splits:        expense.splits,
+    date:          expense.date || null,
+  });
+  if (error) throw error;
+}
+
+export async function updateExpense(expense: TripExpense): Promise<void> {
+  const { error } = await supabase.from('trip_expenses').update({
+    description:   expense.description,
+    amount:        expense.amount,
+    paid_by:       expense.paidBy,
+    paid_by_email: expense.paidByEmail,
+    splits:        expense.splits,
+    date:          expense.date || null,
+  }).eq('id', expense.id);
+  if (error) throw error;
+}
+
+export async function deleteExpense(expenseId: string): Promise<void> {
+  const { error } = await supabase
+    .from('trip_expenses')
+    .delete()
+    .eq('id', expenseId);
+  if (error) throw error;
+}
+
+// ── Trip Funds ────────────────────────────────────────────────────────────────
+
+function rowToFund(r: Record<string, unknown>): TripFund {
+  return {
+    id:              r.id as string,
+    tripId:          r.trip_id as string,
+    description:     r.description as string,
+    amountPerPerson: Number(r.amount_per_person),
+    createdBy:       r.created_by as string,
+    createdAt:       r.created_at as string,
+  };
+}
+
+function rowToFundPayment(r: Record<string, unknown>): TripFundPayment {
+  return {
+    id:        r.id as string,
+    fundId:    r.fund_id as string,
+    tripId:    r.trip_id as string,
+    userId:    r.user_id as string,
+    userEmail: r.user_email as string,
+    paid:      r.paid as boolean,
+    paidAt:    (r.paid_at as string) ?? null,
+  };
+}
+
+export async function fetchFunds(tripId: string): Promise<TripFund[]> {
+  const { data, error } = await supabase
+    .from('trip_funds')
+    .select('*')
+    .eq('trip_id', tripId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(rowToFund);
+}
+
+export async function createFund(fund: TripFund, payments: TripFundPayment[]): Promise<void> {
+  const { error: e1 } = await supabase.from('trip_funds').insert({
+    id:                fund.id,
+    trip_id:           fund.tripId,
+    description:       fund.description,
+    amount_per_person: fund.amountPerPerson,
+    created_by:        fund.createdBy,
+    created_at:        fund.createdAt,
+  });
+  if (e1) throw e1;
+
+  if (payments.length > 0) {
+    const { error: e2 } = await supabase.from('trip_fund_payments').insert(
+      payments.map(p => ({
+        id:         p.id,
+        fund_id:    p.fundId,
+        trip_id:    p.tripId,
+        user_id:    p.userId,
+        user_email: p.userEmail,
+        paid:       p.paid,
+        paid_at:    p.paidAt,
+      }))
+    );
+    if (e2) throw e2;
+  }
+}
+
+export async function deleteFund(fundId: string): Promise<void> {
+  const { error } = await supabase.from('trip_funds').delete().eq('id', fundId);
+  if (error) throw error;
+}
+
+export async function fetchFundPayments(tripId: string): Promise<TripFundPayment[]> {
+  const { data, error } = await supabase
+    .from('trip_fund_payments')
+    .select('*')
+    .eq('trip_id', tripId);
+  if (error) throw error;
+  return (data ?? []).map(rowToFundPayment);
+}
+
+export async function toggleFundPayment(paymentId: string, paid: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('trip_fund_payments')
+    .update({ paid, paid_at: paid ? new Date().toISOString() : null })
+    .eq('id', paymentId);
+  if (error) throw error;
 }

@@ -7,8 +7,9 @@ import {
   GalleryHorizontal,
   Pencil,
   UserPlus,
+  Wallet,
 } from "lucide-react";
-import type { Trip, Activity, MediaItem, TripMember } from "../types";
+import type { Trip, Activity, MediaItem, TripMember, TripExpense, TripFund, TripFundPayment } from "../types";
 import {
   fetchActivities,
   createActivity,
@@ -18,24 +19,35 @@ import {
   updateTrip,
   fetchTripMembers,
   isOwner as fetchIsOwner,
+  fetchExpenses,
+  fetchFunds,
+  fetchFundPayments,
 } from "../utils/db";
 import { supabase } from "../utils/supabase";
 import { scheduleActivityNotifications } from "../utils/activityNotifications";
 import Itinerary from "./Itinerary";
 import Memory from "./Memory";
+import ExpenseTab from "./ExpenseTab";
 import CreateTripModal from "./CreateTripModal";
 import InviteModal from "./InviteModal";
 
 interface Props {
   trip: Trip;
+  initialTab?: 'plan' | 'memory' | 'expense';
   onBack: () => void;
+  onTabChange?: (tab: 'plan' | 'memory' | 'expense') => void;
   onTripUpdate: (trip: Trip) => void;
 }
 
 import { formatDateRange, getCountdown } from "../utils/format";
 
-export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
-  const [tab, setTab] = useState<"plan" | "memory">("plan");
+export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabChange, onTripUpdate }: Props) {
+  const [tab, setTabState] = useState<"plan" | "memory" | "expense">(initialTab);
+
+  function setTab(next: 'plan' | 'memory' | 'expense') {
+    setTabState(next);
+    onTabChange?.(next);
+  }
   const [activities, setActivities] = useState<Activity[]>([]);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [planLoading, setPlanLoading] = useState(true);
@@ -44,6 +56,9 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
   const [members, setMembers] = useState<TripMember[]>([]);
   const [ownerStatus, setOwnerStatus] = useState(false);
   const [currentUserId, setCurrentUserId] = useState('');
+  const [expenses, setExpenses]         = useState<TripExpense[]>([]);
+  const [funds, setFunds]               = useState<TripFund[]>([]);
+  const [fundPayments, setFundPayments] = useState<TripFundPayment[]>([]);
 
   useEffect(() => {
     setPlanLoading(true);
@@ -57,6 +72,9 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
     fetchMediaItems(trip.id).then(setMedia).catch(console.error);
     fetchTripMembers(trip.id).then(setMembers).catch(console.error);
     fetchIsOwner(trip.id).then(setOwnerStatus);
+    fetchExpenses(trip.id).then(setExpenses).catch(console.error);
+    fetchFunds(trip.id).then(setFunds).catch(console.error);
+    fetchFundPayments(trip.id).then(setFundPayments).catch(console.error);
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setCurrentUserId(user.id);
     });
@@ -229,6 +247,29 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
               )}
             </button>
             <button
+              onClick={() => setTab("expense")}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-all ${
+                tab === "expense"
+                  ? "text-emerald-600"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <Wallet size={13} />
+              Chi tiêu
+              {expenses.length > 0 && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                  tab === "expense"
+                    ? "bg-emerald-100 text-emerald-600"
+                    : "bg-slate-100 text-slate-400"
+                }`}>
+                  {expenses.length}
+                </span>
+              )}
+              {tab === "expense" && (
+                <span className="absolute bottom-0 inset-x-2 h-0.5 bg-emerald-500 rounded-full" />
+              )}
+            </button>
+            <button
               onClick={() => setTab("memory")}
               className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-all ${
                 tab === "memory"
@@ -259,7 +300,20 @@ export default function TripDetail({ trip, onBack, onTripUpdate }: Props) {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col pb-safe">
-        {tab === "plan" ? (
+        {tab === "expense" ? (
+          <ExpenseTab
+            tripId={trip.id}
+            tripName={trip.name}
+            expenses={expenses}
+            members={members}
+            currentUserId={currentUserId}
+            isOwner={ownerStatus}
+            funds={funds}
+            fundPayments={fundPayments}
+            onChange={setExpenses}
+            onFundsChange={(f, p) => { setFunds(f); setFundPayments(p); }}
+          />
+        ) : tab === "plan" ? (
           <div className="flex-1 overflow-auto">
             {planLoading ? (
               <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
