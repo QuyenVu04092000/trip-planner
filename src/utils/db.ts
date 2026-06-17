@@ -633,14 +633,14 @@ export async function acceptInvite(token: string): Promise<string | null> {
   if (!invite || invite.status !== 'active') return null;
   if (new Date(invite.expiresAt) < new Date()) return null;
 
-  // Insert member (ignore if already member)
-  await supabase.from('trip_members').upsert({
-    id: `mem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    trip_id: invite.tripId,
-    user_id: user.id,
-    user_email: user.email ?? '',
-    role: 'member',
-  }, { onConflict: 'trip_id,user_id', ignoreDuplicates: true });
+  // Dùng RPC với SECURITY DEFINER để bypass RLS hoàn toàn
+  // Hàm SQL kiểm tra auth.uid() bên trong nên vẫn an toàn
+  const { error: rpcError } = await supabase.rpc('accept_trip_invite', {
+    p_trip_id:    invite.tripId,
+    p_user_id:    user.id,
+    p_user_email: user.email ?? '',
+  });
+  if (rpcError) throw rpcError;
 
   return invite.tripId;
 }

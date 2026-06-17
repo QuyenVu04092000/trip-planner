@@ -188,9 +188,22 @@ export default function App() {
           onBack={() => setPage({ page: 'list' })}
           onTabChange={(tab) => setPage({ page: 'trip', tripId: trip.id, tab })}
           onTripUpdate={handleUpdateTrip}
+          onLogout={handleLogout}
         />
       );
     }
+    // Trip not in state yet (e.g. just joined via invite) — refetch once
+    if (!loading) {
+      fetchTrips().then(setTrips).catch(console.error);
+    }
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+        <div className="text-center">
+          <div className="text-5xl mb-4">✈️</div>
+          <p className="text-slate-400 text-sm">Đang tải chuyến đi...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
