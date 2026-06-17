@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { X, Loader2, Equal, Sliders } from 'lucide-react';
-import type { TripMember, TripExpense, ExpenseSplit } from '../types';
+import { X, Loader2, Equal, Sliders, Wallet, PiggyBank } from 'lucide-react';
+import type { TripMember, TripExpense, ExpenseSplit, TripFund } from '../types';
 
 interface Props {
   tripId: string;
   members: TripMember[];
   currentUserId: string;
-  initialExpense?: TripExpense; // nếu có → edit mode
+  funds: TripFund[];
+  initialExpense?: TripExpense;
   onSave: (expense: TripExpense) => Promise<void>;
   onClose: () => void;
 }
@@ -28,7 +29,7 @@ function fmtInput(val: string): string {
 }
 
 export default function AddExpenseModal({
-  tripId, members, currentUserId, initialExpense, onSave, onClose,
+  tripId, members, currentUserId, funds, initialExpense, onSave, onClose,
 }: Props) {
   const isEdit = !!initialExpense;
 
@@ -36,13 +37,13 @@ export default function AddExpenseModal({
   const [amount, setAmount]           = useState(initialExpense ? initialExpense.amount.toLocaleString('vi-VN') : '');
   const [paidBy, setPaidBy]           = useState(initialExpense?.paidBy ?? currentUserId);
   const [splitType, setSplitType]     = useState<'equal' | 'custom'>('equal');
+  const [paySource, setPaySource]     = useState<'personal' | 'fund'>(initialExpense?.fundId ? 'fund' : 'personal');
+  const [selectedFundId, setSelectedFundId] = useState<string>(initialExpense?.fundId ?? funds[0]?.id ?? '');
 
-  // Which members are included (equal split)
   const [splitWith, setSplitWith] = useState<Set<string>>(
     () => new Set(initialExpense ? initialExpense.splits.map(s => s.userId) : members.map(m => m.userId))
   );
 
-  // Custom amounts per member
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>(() => {
     if (initialExpense) {
       const map: Record<string, string> = {};
@@ -58,11 +59,18 @@ export default function AddExpenseModal({
   const splitCount = splitWith.size;
   const perPerson  = splitCount > 0 ? Math.round(numAmount / splitCount) : 0;
 
-  // Custom split: sum of entered amounts
-  const customTotal = Object.values(customAmounts).reduce((s, v) => s + parseVnd(v), 0);
+  const customTotal     = Object.values(customAmounts).reduce((s, v) => s + parseVnd(v), 0);
   const customRemainder = numAmount - customTotal;
 
-  // Auto-init custom amounts when switching to custom mode
+  // Resolve who is effectively paying
+  const selectedFund       = funds.find(f => f.id === selectedFundId);
+  const fundCollectorId    = selectedFund?.createdBy ?? '';
+  const fundCollector      = members.find(m => m.userId === fundCollectorId);
+  const effectivePaidBy    = paySource === 'fund' ? fundCollectorId : paidBy;
+  const effectivePaidByEmail = paySource === 'fund'
+    ? (fundCollector?.userEmail ?? '')
+    : (members.find(m => m.userId === paidBy)?.userEmail ?? '');
+
   useEffect(() => {
     if (splitType === 'custom' && numAmount > 0) {
       const next: Record<string, string> = {};
@@ -88,7 +96,6 @@ export default function AddExpenseModal({
         .filter(m => splitWith.has(m.userId))
         .map(m => ({ userId: m.userId, email: m.userEmail, amount: perPerson }));
     }
-    // custom
     return members
       .map(m => ({ userId: m.userId, email: m.userEmail, amount: parseVnd(customAmounts[m.userId] ?? '0') }))
       .filter(s => s.amount > 0);
@@ -96,8 +103,8 @@ export default function AddExpenseModal({
 
   function canSave() {
     if (!description.trim() || numAmount <= 0) return false;
+    if (paySource === 'fund' && !fundCollectorId) return false;
     if (splitType === 'equal') return splitWith.size > 0;
-    // custom: sum must equal total
     return buildSplits().length > 0 && customRemainder === 0;
   }
 
@@ -105,17 +112,17 @@ export default function AddExpenseModal({
     if (!canSave()) return;
     setSaving(true);
     try {
-      const paidByEmail = members.find(m => m.userId === paidBy)?.userEmail ?? '';
       const expense: TripExpense = {
         id:          initialExpense?.id ?? `exp_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         tripId,
         description: description.trim(),
         amount:      numAmount,
-        paidBy,
-        paidByEmail,
+        paidBy:      effectivePaidBy,
+        paidByEmail: effectivePaidByEmail,
         splits:      buildSplits(),
         date:        initialExpense?.date ?? new Date().toISOString().split('T')[0],
         createdAt:   initialExpense?.createdAt ?? new Date().toISOString(),
+        fundId:      paySource === 'fund' ? selectedFundId : null,
       };
       await onSave(expense);
       onClose();
@@ -123,6 +130,8 @@ export default function AddExpenseModal({
       setSaving(false);
     }
   }
+
+  const hasFunds = funds.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -137,6 +146,62 @@ export default function AddExpenseModal({
         </div>
 
         <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+
+          {/* Pay source toggle — only show if funds exist */}
+          {hasFunds && (
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+              <button
+                onClick={() => setPaySource('personal')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  paySource === 'personal'
+                    ? 'bg-white text-slate-800 shadow-sm'
+                    : 'text-slate-500'
+                }`}
+              >
+                <Wallet size={13} /> Tiền túi
+              </button>
+              <button
+                onClick={() => setPaySource('fund')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  paySource === 'fund'
+                    ? 'bg-amber-400 text-white shadow-sm'
+                    : 'text-slate-500'
+                }`}
+              >
+                <PiggyBank size={13} /> Từ quỹ
+              </button>
+            </div>
+          )}
+
+          {/* Fund selector (if multiple funds) */}
+          {paySource === 'fund' && funds.length > 1 && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Chọn quỹ</label>
+              <select
+                value={selectedFundId}
+                onChange={e => setSelectedFundId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-amber-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white"
+              >
+                {funds.map(f => (
+                  <option key={f.id} value={f.id}>{f.description}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Fund info */}
+          {paySource === 'fund' && selectedFund && fundCollector && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-xl border border-amber-100">
+              <PiggyBank size={14} className="text-amber-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-amber-800 truncate">{selectedFund.description}</p>
+                <p className="text-[10px] text-amber-600">
+                  Giữ quỹ: {fundCollector.userEmail.split('@')[0]}
+                  {fundCollector.userId === currentUserId ? ' (bạn)' : ''}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Description */}
           <div className="space-y-1.5">
@@ -163,21 +228,23 @@ export default function AddExpenseModal({
             />
           </div>
 
-          {/* Paid by */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Người trả</label>
-            <select
-              value={paidBy}
-              onChange={e => setPaidBy(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-            >
-              {members.map(m => (
-                <option key={m.userId} value={m.userId}>
-                  {m.userEmail}{m.userId === currentUserId ? ' (bạn)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Paid by — only shown for personal */}
+          {paySource === 'personal' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">Người trả</label>
+              <select
+                value={paidBy}
+                onChange={e => setPaidBy(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+              >
+                {members.map(m => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.userEmail}{m.userId === currentUserId ? ' (bạn)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Split type toggle */}
           <div className="space-y-2">
@@ -206,7 +273,7 @@ export default function AddExpenseModal({
             </div>
           </div>
 
-          {/* Equal split: checkboxes */}
+          {/* Equal split */}
           {splitType === 'equal' && (
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
@@ -241,7 +308,7 @@ export default function AddExpenseModal({
             </div>
           )}
 
-          {/* Custom split: inputs per person */}
+          {/* Custom split */}
           {splitType === 'custom' && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">

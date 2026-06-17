@@ -650,6 +650,7 @@ function rowToExpense(r: Record<string, unknown>): TripExpense {
     splits:       (r.splits as TripExpense['splits']) ?? [],
     date:         (r.date as string) ?? '',
     createdAt:    r.created_at as string,
+    fundId:       (r.fund_id as string) ?? null,
   };
 }
 
@@ -673,6 +674,7 @@ export async function createExpense(expense: TripExpense): Promise<void> {
     paid_by_email: expense.paidByEmail,
     splits:        expense.splits,
     date:          expense.date || null,
+    fund_id:       expense.fundId ?? null,
   });
   if (error) throw error;
 }
@@ -685,6 +687,7 @@ export async function updateExpense(expense: TripExpense): Promise<void> {
     paid_by_email: expense.paidByEmail,
     splits:        expense.splits,
     date:          expense.date || null,
+    fund_id:       expense.fundId ?? null,
   }).eq('id', expense.id);
   if (error) throw error;
 }

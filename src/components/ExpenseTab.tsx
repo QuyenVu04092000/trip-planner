@@ -76,12 +76,15 @@ export default function ExpenseTab({
   const [deletingId, setDeletingId]       = useState('');
   const [showFundModal, setShowFundModal] = useState(false);
 
-  const balances   = calcBalances(expenses, members, funds, fundPayments);
-  const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
-  const totalFund  = funds.reduce((s, f) => {
+  const balances      = calcBalances(expenses, members, funds, fundPayments);
+  const totalSpent    = expenses.reduce((s, e) => s + e.amount, 0);
+  const totalFund     = funds.reduce((s, f) => {
     const paidCount = fundPayments.filter(p => p.fundId === f.id && p.paid).length;
     return s + paidCount * f.amountPerPerson;
   }, 0);
+  // Chỉ tính chi từ quỹ (có fundId), không tính tiền túi cá nhân
+  const fundSpent     = expenses.filter(e => e.fundId).reduce((s, e) => s + e.amount, 0);
+  const fundRemaining = totalFund - fundSpent;
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -139,21 +142,17 @@ export default function ExpenseTab({
       <div className="px-4 pt-4 pb-2 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Thu quỹ</p>
-          {isOwner && (
-            <button
-              onClick={() => setShowFundModal(true)}
-              className="flex items-center gap-1 text-xs font-semibold text-amber-600 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 transition-colors"
-            >
-              <PiggyBank size={12} /> Tạo quỹ
-            </button>
-          )}
+          <button
+            onClick={() => setShowFundModal(true)}
+            className="flex items-center gap-1 text-xs font-semibold text-amber-600 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 transition-colors"
+          >
+            <PiggyBank size={12} /> Tạo quỹ
+          </button>
         </div>
 
         {!hasFunds ? (
           <div className="text-center py-6 text-slate-400 text-xs bg-white rounded-2xl border border-dashed border-slate-200">
-            {isOwner
-              ? 'Nhấn "Tạo quỹ" để thu tiền trước khi đi'
-              : 'Chưa có quỹ nào được tạo'}
+            Nhấn "Tạo quỹ" để thu tiền trước khi đi
           </div>
         ) : (
           funds.map(fund => (
@@ -178,10 +177,11 @@ export default function ExpenseTab({
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Tổng quan</span>
               <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <p className="text-sm font-bold text-slate-700">{fmt(totalSpent)}</p>
+                  <p className="text-sm font-bold text-slate-700">Chi: {fmt(totalSpent)}</p>
                   {totalFund > 0 && (
-                    <p className="text-[10px] text-amber-600 font-medium">
-                      Quỹ: {fmt(totalFund)}
+                    <p className={`text-[10px] font-semibold ${fundRemaining >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      Quỹ còn: {fundRemaining >= 0 ? '' : '−'}{fmt(fundRemaining)}
+                      {fundRemaining < 0 && ' ⚠️'}
                     </p>
                   )}
                 </div>
@@ -230,7 +230,7 @@ export default function ExpenseTab({
           </div>
         ) : (
           expenses.map(exp => {
-            const canEdit = exp.paidBy === currentUserId || isOwner;
+            const canDelete = true;
             return (
               <div key={exp.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-3">
                 <div className="flex items-start gap-3">
@@ -240,32 +240,30 @@ export default function ExpenseTab({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-800 truncate">{exp.description}</p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {exp.paidByEmail.split('@')[0]} trả · {exp.splits.length} người
+                      {exp.fundId ? '💰 Từ quỹ · ' : ''}{exp.paidByEmail.split('@')[0]} trả · {exp.splits.length} người
                     </p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <span className="text-sm font-bold text-slate-700">
                       {exp.amount.toLocaleString('vi-VN')}đ
                     </span>
-                    {canEdit && (
-                      <>
-                        <button
-                          onClick={() => setEditExpense(exp)}
-                          className="p-1.5 text-slate-300 hover:text-blue-400 transition-colors"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(exp.id)}
-                          disabled={deletingId === exp.id}
-                          className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
-                        >
-                          {deletingId === exp.id
-                            ? <Loader2 size={13} className="animate-spin" />
-                            : <Trash2 size={13} />
-                          }
-                        </button>
-                      </>
+                    <button
+                      onClick={() => setEditExpense(exp)}
+                      className="p-1.5 text-slate-300 hover:text-blue-400 transition-colors"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    {canDelete && (
+                      <button
+                        onClick={() => handleDelete(exp.id)}
+                        disabled={deletingId === exp.id}
+                        className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                      >
+                        {deletingId === exp.id
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : <Trash2 size={13} />
+                        }
+                      </button>
                     )}
                   </div>
                 </div>
@@ -288,6 +286,7 @@ export default function ExpenseTab({
           tripId={tripId}
           members={members}
           currentUserId={currentUserId}
+          funds={funds}
           onSave={handleSave}
           onClose={() => setShowAdd(false)}
         />
@@ -298,6 +297,7 @@ export default function ExpenseTab({
           tripId={tripId}
           members={members}
           currentUserId={currentUserId}
+          funds={funds}
           initialExpense={editExpense}
           onSave={handleUpdate}
           onClose={() => setEditExpense(null)}

@@ -43,6 +43,18 @@ export default function FundCard({ fund, payments, currentUserId, canManage, onT
           <p className="text-xs text-amber-700 font-medium mt-0.5">
             {fund.amountPerPerson.toLocaleString('vi-VN')}đ / người
           </p>
+          {(() => {
+            const collector = payments.find(p => p.userId === fund.createdBy);
+            const name = collector
+              ? collector.userEmail.split('@')[0]
+              : 'unknown';
+            const isMe = fund.createdBy === currentUserId;
+            return (
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Giữ quỹ: <span className="font-medium text-slate-500">{name}{isMe ? ' (bạn)' : ''}</span>
+              </p>
+            );
+          })()}
         </div>
         <div className="text-right flex-shrink-0 mr-1">
           <p className="text-sm font-bold text-slate-700">{paidCount}/{payments.length}</p>

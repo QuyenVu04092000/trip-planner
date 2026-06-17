@@ -90,11 +90,12 @@ export interface TripExpense {
   tripId: string;
   description: string;
   amount: number;
-  paidBy: string;       // user_id
+  paidBy: string;
   paidByEmail: string;
   splits: ExpenseSplit[];
   date: string;
   createdAt: string;
+  fundId?: string | null;  // set khi chi từ quỹ
 }
 
 export type AppPage =

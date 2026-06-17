@@ -23,10 +23,10 @@ CREATE POLICY "trip_expenses_select" ON trip_expenses FOR SELECT
 CREATE POLICY "trip_expenses_insert" ON trip_expenses FOR INSERT
   WITH CHECK (trip_id IN (SELECT get_my_trip_ids()));
 
--- Người tạo hoặc owner có thể xoá
+-- Tất cả member của trip có thể xoá
 CREATE POLICY "trip_expenses_delete" ON trip_expenses FOR DELETE
-  USING (paid_by = auth.uid()::text OR is_trip_owner(trip_id));
+  USING (trip_id IN (SELECT get_my_trip_ids()));
 
--- Update: người tạo hoặc owner
+-- Update: tất cả member của trip
 CREATE POLICY "trip_expenses_update" ON trip_expenses FOR UPDATE
-  USING (paid_by = auth.uid()::text OR is_trip_owner(trip_id));
+  USING (trip_id IN (SELECT get_my_trip_ids()));

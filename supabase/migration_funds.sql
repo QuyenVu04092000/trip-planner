@@ -39,10 +39,14 @@ CREATE POLICY "trip_fund_payments_select" ON trip_fund_payments
 CREATE POLICY "trip_fund_payments_insert" ON trip_fund_payments
   FOR INSERT WITH CHECK (trip_id IN (SELECT get_my_trip_ids()));
 
--- Members can toggle their own; owner can toggle anyone
+-- Members toggle own; owner or fund creator toggle anyone in their fund
 CREATE POLICY "trip_fund_payments_update" ON trip_fund_payments
   FOR UPDATE USING (
-    user_id = auth.uid()::text OR is_trip_owner(trip_id)
+    user_id = auth.uid()::text
+    OR is_trip_owner(trip_id)
+    OR fund_id IN (
+      SELECT id FROM trip_funds WHERE created_by = auth.uid()::text
+    )
   );
 
 CREATE POLICY "trip_fund_payments_delete" ON trip_fund_payments
