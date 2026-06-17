@@ -59,21 +59,21 @@ function emptyCell(): object {
 // ── Balance calc ──────────────────────────────────────────────────────────────
 
 function calcBalances(expenses: TripExpense[], members: TripMember[]) {
-  const map: Record<string, { email: string; net: number }> = {};
-  for (const m of members) map[m.userId] = { email: m.userEmail, net: 0 };
+  const map: Record<string, { net: number }> = {};
+  for (const m of members) map[m.userId] = { net: 0 };
   for (const exp of expenses) {
     if (map[exp.paidBy]) map[exp.paidBy].net += exp.amount;
     for (const s of exp.splits) {
       if (map[s.userId]) map[s.userId].net -= s.amount;
     }
   }
-  return members.map(m => ({ userId: m.userId, email: m.userEmail, net: map[m.userId]?.net ?? 0 }));
+  return members.map(m => ({ userId: m.userId, net: map[m.userId]?.net ?? 0 }));
 }
 
 // ── Sheet 1: Chi tiêu ─────────────────────────────────────────────────────────
 
-function buildSheet1(expenses: TripExpense[]) {
-  const ws: Record<string, object> = {};
+function buildSheet1(expenses: TripExpense[], members: TripMember[]) {
+  const ws: Record<string, unknown> = {};
   let r = 0; // row index
 
   // Title
@@ -95,7 +95,7 @@ function buildSheet1(expenses: TripExpense[]) {
     ws[XLSXStyle.utils.encode_cell({ r, c: 0 })] = dataCell(i + 1,                { bg, align: 'center' });
     ws[XLSXStyle.utils.encode_cell({ r, c: 1 })] = dataCell(exp.date || '',        { bg, align: 'center' });
     ws[XLSXStyle.utils.encode_cell({ r, c: 2 })] = dataCell(exp.description,       { bg });
-    ws[XLSXStyle.utils.encode_cell({ r, c: 3 })] = dataCell(exp.paidByEmail,       { bg });
+    ws[XLSXStyle.utils.encode_cell({ r, c: 3 })] = dataCell(members.find(m => m.userId === exp.paidBy)?.displayName ?? exp.paidByEmail, { bg });
     ws[XLSXStyle.utils.encode_cell({ r, c: 4 })] = dataCell(exp.amount,            { bg });
     ws[XLSXStyle.utils.encode_cell({ r, c: 5 })] = dataCell(exp.splits.length,     { bg, align: 'center' });
     ws[XLSXStyle.utils.encode_cell({ r, c: 6 })] = dataCell(perPerson,             { bg });
@@ -123,7 +123,7 @@ function buildSheet1(expenses: TripExpense[]) {
 // ── Sheet 2: Chia đầu người ───────────────────────────────────────────────────
 
 function buildSheet2(expenses: TripExpense[], members: TripMember[]) {
-  const ws: Record<string, object> = {};
+  const ws: Record<string, unknown> = {};
   const balances = calcBalances(expenses, members);
   const total = expenses.reduce((s, e) => s + e.amount, 0);
   let r = 0;
@@ -132,7 +132,7 @@ function buildSheet2(expenses: TripExpense[], members: TripMember[]) {
   ws[XLSXStyle.utils.encode_cell({ r, c: 0 })] = headerCell('Mô tả');
   ws[XLSXStyle.utils.encode_cell({ r, c: 1 })] = headerCell('Tổng (đ)');
   members.forEach((m, ci) => {
-    ws[XLSXStyle.utils.encode_cell({ r, c: ci + 2 })] = headerCell(m.userEmail.split('@')[0]);
+    ws[XLSXStyle.utils.encode_cell({ r, c: ci + 2 })] = headerCell(m.displayName);
   });
   r++;
 
@@ -197,7 +197,7 @@ export function exportExpensesToExcel(
 ) {
   const wb = XLSXStyle.utils.book_new();
 
-  XLSXStyle.utils.book_append_sheet(wb, buildSheet1(expenses), 'Chi tiêu');
+  XLSXStyle.utils.book_append_sheet(wb, buildSheet1(expenses, members), 'Chi tiêu');
   XLSXStyle.utils.book_append_sheet(wb, buildSheet2(expenses, members), 'Chia đầu người');
 
   XLSXStyle.writeFile(wb, `${tripName} - Chi tiêu.xlsx`);

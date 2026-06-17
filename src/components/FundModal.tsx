@@ -114,7 +114,7 @@ export default function FundModal({ tripId, members, currentUserId, onSave, onCl
             {members.map(m => (
               <div key={m.userId} className="flex items-center gap-2 text-sm text-slate-600">
                 <span className="w-1.5 h-1.5 bg-slate-300 rounded-full flex-shrink-0" />
-                {m.userEmail.split('@')[0]}
+                {m.displayName}
                 {m.userId === currentUserId && <span className="text-slate-400 text-xs">(bạn)</span>}
               </div>
             ))}

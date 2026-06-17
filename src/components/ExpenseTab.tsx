@@ -23,6 +23,7 @@ interface Props {
 interface Balance {
   userId: string;
   email: string;
+  displayName: string;
   net: number;
 }
 
@@ -32,8 +33,8 @@ function calcBalances(
   funds: TripFund[],
   fundPayments: TripFundPayment[],
 ): Balance[] {
-  const map: Record<string, { email: string; net: number }> = {};
-  for (const m of members) map[m.userId] = { email: m.userEmail, net: 0 };
+  const map: Record<string, { email: string; displayName: string; net: number }> = {};
+  for (const m of members) map[m.userId] = { email: m.userEmail, displayName: m.displayName, net: 0 };
 
   // Expenses: payer credited, each split person debited
   for (const exp of expenses) {
@@ -53,7 +54,7 @@ function calcBalances(
     }
   }
 
-  return Object.entries(map).map(([userId, d]) => ({ userId, email: d.email, net: d.net }));
+  return Object.entries(map).map(([userId, d]) => ({ userId, email: d.email, displayName: d.displayName, net: d.net }));
 }
 
 function avatarColor(email: string) {
@@ -160,8 +161,10 @@ export default function ExpenseTab({
               key={fund.id}
               fund={fund}
               payments={fundPayments.filter(p => p.fundId === fund.id)}
+              members={members}
               currentUserId={currentUserId}
               canManage={isOwner || fund.createdBy === currentUserId}
+              linkedExpenseCount={expenses.filter(e => e.fundId === fund.id).length}
               onToggle={handleTogglePayment}
               onDelete={handleDeleteFund}
             />
@@ -199,10 +202,10 @@ export default function ExpenseTab({
               {balances.map(b => (
                 <div key={b.userId} className="flex items-center gap-3 px-4 py-2.5">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${avatarColor(b.email)}`}>
-                    {b.email.slice(0, 2).toUpperCase()}
+                    {b.displayName.slice(0, 2).toUpperCase()}
                   </div>
                   <span className="flex-1 text-sm text-slate-700 truncate">
-                    {b.email.split('@')[0]}
+                    {b.displayName}
                     {b.userId === currentUserId && <span className="text-slate-400 text-xs ml-1">(bạn)</span>}
                   </span>
                   <div className={`flex items-center gap-1 text-sm font-semibold ${b.net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -240,7 +243,7 @@ export default function ExpenseTab({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-800 truncate">{exp.description}</p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {exp.fundId ? '💰 Từ quỹ · ' : ''}{exp.paidByEmail.split('@')[0]} trả · {exp.splits.length} người
+                      {exp.fundId ? '💰 Từ quỹ · ' : ''}{members.find(m => m.userId === exp.paidBy)?.displayName ?? exp.paidByEmail.split('@')[0]} trả · {exp.splits.length} người
                     </p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">

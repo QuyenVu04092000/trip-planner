@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Trip, Activity, MediaItem, TripMember, TripInvite, TripExpense, TripFund, TripFundPayment } from '../types';
+import type { Trip, Activity, MediaItem, TripMember, TripInvite, TripExpense, TripFund, TripFundPayment, UserProfile } from '../types';
 import exifr from 'exifr';
 
 
@@ -533,12 +533,15 @@ export async function deleteMediaItem(item: MediaItem): Promise<void> {
 
 // ── Invite / Members ──────────────────────────────────────────────────────────
 
-function rowToMember(r: Record<string, unknown>): TripMember {
+function rowToMember(r: Record<string, unknown>, profileMap: Record<string, string> = {}): TripMember {
+  const email = (r.user_email as string) ?? '';
+  const userId = r.user_id as string;
   return {
     id: r.id as string,
     tripId: r.trip_id as string,
-    userId: r.user_id as string,
-    userEmail: (r.user_email as string) ?? '',
+    userId,
+    userEmail: email,
+    displayName: profileMap[userId] || email.split('@')[0],
     role: (r.role as 'owner' | 'member'),
     joinedAt: r.joined_at as string,
   };
@@ -564,7 +567,34 @@ export async function fetchTripMembers(tripId: string): Promise<TripMember[]> {
     .from('trip_members').select('*').eq('trip_id', tripId)
     .order('joined_at', { ascending: true });
   if (error) throw error;
-  return (data ?? []).map(rowToMember);
+  const rows = data ?? [];
+  const userIds = rows.map(r => r.user_id as string);
+  const profileMap: Record<string, string> = {};
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('user_profiles').select('user_id, display_name').in('user_id', userIds);
+    for (const p of profiles ?? []) profileMap[p.user_id] = p.display_name;
+  }
+  return rows.map(r => rowToMember(r, profileMap));
+}
+
+export async function fetchMyProfile(): Promise<UserProfile | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase
+    .from('user_profiles').select('*').eq('user_id', user.id).maybeSingle();
+  return data ? { userId: data.user_id, displayName: data.display_name } : null;
+}
+
+export async function upsertProfile(displayName: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+  const { error } = await supabase.from('user_profiles').upsert({
+    user_id: user.id,
+    display_name: displayName.trim(),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id' });
+  if (error) throw error;
 }
 
 export async function createInvite(trip: Trip): Promise<string> {

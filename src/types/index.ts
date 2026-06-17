@@ -43,8 +43,14 @@ export interface TripMember {
   tripId: string;
   userId: string;
   userEmail: string;
+  displayName: string; // từ user_profiles, mặc định = email prefix
   role: 'owner' | 'member';
   joinedAt: string;
+}
+
+export interface UserProfile {
+  userId: string;
+  displayName: string;
 }
 
 export interface TripInvite {

@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { CheckCircle2, Circle, Trash2, Loader2 } from 'lucide-react';
-import type { TripFund, TripFundPayment } from '../types';
+import type { TripFund, TripFundPayment, TripMember } from '../types';
 
 interface Props {
   fund: TripFund;
   payments: TripFundPayment[];
+  members: TripMember[];
   currentUserId: string;
   canManage: boolean;
+  linkedExpenseCount: number;
   onToggle: (payment: TripFundPayment) => Promise<void>;
   onDelete: (fundId: string) => Promise<void>;
 }
 
-export default function FundCard({ fund, payments, currentUserId, canManage, onToggle, onDelete }: Props) {
+export default function FundCard({ fund, payments, members, currentUserId, canManage, linkedExpenseCount, onToggle, onDelete }: Props) {
   const [toggling, setToggling] = useState('');
   const [deleting, setDeleting] = useState(false);
 
@@ -28,7 +30,10 @@ export default function FundCard({ fund, payments, currentUserId, canManage, onT
   }
 
   async function handleDelete() {
-    if (!confirm('Xoá quỹ này?')) return;
+    const warning = linkedExpenseCount > 0
+      ? `Xoá quỹ "${fund.description}"?\n\n⚠️ ${linkedExpenseCount} khoản chi tiêu đang liên kết với quỹ này sẽ bị chuyển thành tiền túi cá nhân.`
+      : `Xoá quỹ "${fund.description}"?`;
+    if (!confirm(warning)) return;
     setDeleting(true);
     try { await onDelete(fund.id); } finally { setDeleting(false); }
   }
@@ -44,10 +49,8 @@ export default function FundCard({ fund, payments, currentUserId, canManage, onT
             {fund.amountPerPerson.toLocaleString('vi-VN')}đ / người
           </p>
           {(() => {
-            const collector = payments.find(p => p.userId === fund.createdBy);
-            const name = collector
-              ? collector.userEmail.split('@')[0]
-              : 'unknown';
+            const member = members.find(m => m.userId === fund.createdBy);
+            const name = member?.displayName ?? fund.createdBy;
             const isMe = fund.createdBy === currentUserId;
             return (
               <p className="text-[10px] text-slate-400 mt-0.5">
@@ -95,7 +98,7 @@ export default function FundCard({ fund, payments, currentUserId, canManage, onT
               </button>
 
               <span className={`flex-1 text-sm truncate ${p.paid ? 'text-slate-700' : 'text-slate-400'}`}>
-                {p.userEmail.split('@')[0]}
+                {members.find(m => m.userId === p.userId)?.displayName ?? p.userEmail.split('@')[0]}
                 {isMe && <span className="text-slate-400 text-xs ml-1">(bạn)</span>}
               </span>
 

@@ -196,6 +196,7 @@ export default function App() {
   return (
     <TripList
       trips={trips}
+      userEmail={session.user.email ?? ''}
       onSelectTrip={(id) => setPage({ page: 'trip', tripId: id, tab: 'plan' })}
       onCreateTrip={handleCreateTrip}
       onDeleteTrip={handleDeleteTrip}

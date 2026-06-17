@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, MapPin, Calendar, Plane, Trash2, ImageIcon, LogOut, Bell, BellRing, BellOff, RefreshCw } from "lucide-react";
+import { Plus, MapPin, Calendar, Plane, Trash2, ImageIcon, LogOut, Bell, BellRing, BellOff, RefreshCw, UserCircle } from "lucide-react";
 import type { Trip } from "../types";
-import { fetchMediaItems } from "../utils/db";
+import { fetchMediaItems, fetchMyProfile } from "../utils/db";
 import { formatDateRange, getDays, getCountdown } from "../utils/format";
 import { subscribeToPush, unsubscribeFromPush, getPushSubscriptionState } from "../utils/pushClient";
 import CreateTripModal from "./CreateTripModal";
+import ProfileModal from "./ProfileModal";
 
 interface Props {
   trips: Trip[];
+  userEmail: string;
   onSelectTrip: (tripId: string) => void;
   onCreateTrip: (data: Omit<Trip, "id" | "createdAt" | "updatedAt">) => void;
   onDeleteTrip: (tripId: string) => void;
@@ -301,6 +303,7 @@ function usePullToRefresh(onRefresh: () => Promise<void>) {
 
 export default function TripList({
   trips,
+  userEmail,
   onSelectTrip,
   onCreateTrip,
   onDeleteTrip,
@@ -311,6 +314,8 @@ export default function TripList({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pushState, setPushState] = useState<'loading' | 'subscribed' | 'not-subscribed' | 'unsupported'>('loading');
   const [notifToast, setNotifToast] = useState<string | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [displayName, setDisplayName] = useState('');
 
   const { scrollRef, pullY, refreshing, releasing } =
     usePullToRefresh(onRefresh);
@@ -318,6 +323,10 @@ export default function TripList({
   // Check current push subscription state on mount
   useEffect(() => {
     getPushSubscriptionState().then(setPushState);
+  }, []);
+
+  useEffect(() => {
+    fetchMyProfile().then(p => { if (p?.displayName) setDisplayName(p.displayName); });
   }, []);
 
   const showToast = (msg: string, ms = 3500) => {
@@ -421,6 +430,13 @@ export default function TripList({
                   : <Bell size={15} />}
             </button>
             <button
+              onClick={() => setShowProfile(true)}
+              title="Hồ sơ của bạn"
+              className="w-9 h-9 bg-white/10 hover:bg-white/20 text-zinc-400 hover:text-white border border-white/10 rounded-xl flex items-center justify-center transition-all"
+            >
+              <UserCircle size={15} />
+            </button>
+            <button
               onClick={onLogout}
               title="Đăng xuất"
               className="w-9 h-9 bg-white/10 hover:bg-white/20 text-zinc-400 hover:text-white border border-white/10 rounded-xl flex items-center justify-center transition-all"
@@ -430,6 +446,15 @@ export default function TripList({
           </div>
         </div>
       </header>
+
+      {showProfile && (
+        <ProfileModal
+          currentName={displayName || userEmail.split('@')[0]}
+          email={userEmail}
+          onSave={name => setDisplayName(name)}
+          onClose={() => setShowProfile(false)}
+        />
+      )}
 
       {/* Scrollable area with pull-to-refresh */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-y-none" style={{ WebkitOverflowScrolling: 'touch' }}>

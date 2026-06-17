@@ -203,7 +203,7 @@ export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabCha
                   const bg = colors[hash % colors.length];
                   return (
                     <div key={m.id} className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold ${bg}`}>
-                      {m.userEmail.slice(0, 2).toUpperCase()}
+                      {m.displayName.slice(0, 2).toUpperCase()}
                     </div>
                   );
                 })}

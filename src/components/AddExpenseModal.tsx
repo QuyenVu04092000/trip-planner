@@ -196,7 +196,7 @@ export default function AddExpenseModal({
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-amber-800 truncate">{selectedFund.description}</p>
                 <p className="text-[10px] text-amber-600">
-                  Giữ quỹ: {fundCollector.userEmail.split('@')[0]}
+                  Giữ quỹ: {fundCollector.displayName}
                   {fundCollector.userId === currentUserId ? ' (bạn)' : ''}
                 </p>
               </div>
@@ -239,7 +239,7 @@ export default function AddExpenseModal({
               >
                 {members.map(m => (
                   <option key={m.userId} value={m.userId}>
-                    {m.userEmail}{m.userId === currentUserId ? ' (bạn)' : ''}
+                    {m.displayName}{m.userId === currentUserId ? ' (bạn)' : ''}
                   </option>
                 ))}
               </select>
@@ -291,10 +291,10 @@ export default function AddExpenseModal({
                       }`}
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${avatarColor(m.userEmail)}`}>
-                        {m.userEmail.slice(0, 2).toUpperCase()}
+                        {m.displayName.slice(0, 2).toUpperCase()}
                       </div>
                       <span className="flex-1 text-left text-sm text-slate-700 truncate">
-                        {m.userEmail}{m.userId === currentUserId ? ' (bạn)' : ''}
+                        {m.displayName}{m.userId === currentUserId ? ' (bạn)' : ''}
                       </span>
                       <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                         checked ? 'border-blue-500 bg-blue-500' : 'border-slate-300'
@@ -328,10 +328,10 @@ export default function AddExpenseModal({
                 {members.map(m => (
                   <div key={m.userId} className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${avatarColor(m.userEmail)}`}>
-                      {m.userEmail.slice(0, 2).toUpperCase()}
+                      {m.displayName.slice(0, 2).toUpperCase()}
                     </div>
                     <span className="flex-1 text-sm text-slate-700 truncate min-w-0">
-                      {m.userEmail.split('@')[0]}{m.userId === currentUserId ? ' (bạn)' : ''}
+                      {m.displayName}{m.userId === currentUserId ? ' (bạn)' : ''}
                     </span>
                     <input
                       type="text"
