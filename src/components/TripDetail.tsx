@@ -8,6 +8,7 @@ import {
   Pencil,
   UserPlus,
   Wallet,
+  LogOut,
 } from "lucide-react";
 import type { Trip, Activity, MediaItem, TripMember, TripExpense, TripFund, TripFundPayment } from "../types";
 import {
@@ -37,11 +38,12 @@ interface Props {
   onBack: () => void;
   onTabChange?: (tab: 'plan' | 'memory' | 'expense') => void;
   onTripUpdate: (trip: Trip) => void;
+  onLogout: () => void;
 }
 
 import { formatDateRange, getCountdown } from "../utils/format";
 
-export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabChange, onTripUpdate }: Props) {
+export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabChange, onTripUpdate, onLogout }: Props) {
   const [tab, setTabState] = useState<"plan" | "memory" | "expense">(initialTab);
 
   function setTab(next: 'plan' | 'memory' | 'expense') {
@@ -228,6 +230,13 @@ export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabCha
                 <Pencil size={14} />
               </button>
             )}
+            <button
+              onClick={onLogout}
+              title="Đăng xuất"
+              className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
+            >
+              <LogOut size={14} />
+            </button>
           </div>
 
           {/* Tab bar — same glass surface, just a separator line */}
