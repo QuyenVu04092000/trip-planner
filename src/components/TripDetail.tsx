@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ArrowLeft,
   Map,
@@ -10,7 +10,15 @@ import {
   Wallet,
   LogOut,
 } from "lucide-react";
-import type { Trip, Activity, MediaItem, TripMember, TripExpense, TripFund, TripFundPayment } from "../types";
+import type {
+  Trip,
+  Activity,
+  MediaItem,
+  TripMember,
+  TripExpense,
+  TripFund,
+  TripFundPayment,
+} from "../types";
 import {
   fetchActivities,
   createActivity,
@@ -26,6 +34,11 @@ import {
 } from "../utils/db";
 import { supabase } from "../utils/supabase";
 import { scheduleActivityNotifications } from "../utils/activityNotifications";
+import {
+  updateWidgetFromTrip,
+  findNearestTrip,
+  syncNearestTripToWidget,
+} from "../utils/widgetBridge";
 import Itinerary from "./Itinerary";
 import Memory from "./Memory";
 import ExpenseTab from "./ExpenseTab";
@@ -34,19 +47,30 @@ import InviteModal from "./InviteModal";
 
 interface Props {
   trip: Trip;
-  initialTab?: 'plan' | 'memory' | 'expense';
+  allTrips: Trip[];
+  initialTab?: "plan" | "memory" | "expense";
   onBack: () => void;
-  onTabChange?: (tab: 'plan' | 'memory' | 'expense') => void;
+  onTabChange?: (tab: "plan" | "memory" | "expense") => void;
   onTripUpdate: (trip: Trip) => void;
   onLogout: () => void;
 }
 
 import { formatDateRange, getCountdown } from "../utils/format";
 
-export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabChange, onTripUpdate, onLogout }: Props) {
-  const [tab, setTabState] = useState<"plan" | "memory" | "expense">(initialTab);
+export default function TripDetail({
+  trip,
+  allTrips,
+  initialTab = "plan",
+  onBack,
+  onTabChange,
+  onTripUpdate,
+  onLogout,
+}: Props) {
+  const [tab, setTabState] = useState<"plan" | "memory" | "expense">(
+    initialTab,
+  );
 
-  function setTab(next: 'plan' | 'memory' | 'expense') {
+  function setTab(next: "plan" | "memory" | "expense") {
     setTabState(next);
     onTabChange?.(next);
   }
@@ -57,30 +81,114 @@ export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabCha
   const [showInvite, setShowInvite] = useState(false);
   const [members, setMembers] = useState<TripMember[]>([]);
   const [ownerStatus, setOwnerStatus] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState('');
-  const [expenses, setExpenses]         = useState<TripExpense[]>([]);
-  const [funds, setFunds]               = useState<TripFund[]>([]);
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [expenses, setExpenses] = useState<TripExpense[]>([]);
+  const [funds, setFunds] = useState<TripFund[]>([]);
   const [fundPayments, setFundPayments] = useState<TripFundPayment[]>([]);
+  const widgetReady = useRef(false);
 
   useEffect(() => {
+    widgetReady.current = false;
     setPlanLoading(true);
-    fetchActivities(trip.id)
+
+    const activitiesP = fetchActivities(trip.id)
       .then((acts) => {
         setActivities(acts);
         scheduleActivityNotifications(acts);
+        return acts;
       })
-      .catch(console.error)
-      .finally(() => setPlanLoading(false));
-    fetchMediaItems(trip.id).then(setMedia).catch(console.error);
+      .catch((e) => {
+        console.error(e);
+        return [] as Activity[];
+      });
+
+    const mediaP = fetchMediaItems(trip.id)
+      .then((items) => {
+        setMedia(items);
+        return items;
+      })
+      .catch(() => [] as MediaItem[]);
+    const expensesP = fetchExpenses(trip.id)
+      .then((exps) => {
+        setExpenses(exps);
+        return exps;
+      })
+      .catch(() => [] as TripExpense[]);
+    const fundsP = fetchFunds(trip.id)
+      .then((fds) => {
+        setFunds(fds);
+        return fds;
+      })
+      .catch(() => [] as TripFund[]);
+    const fundPaymentsP = fetchFundPayments(trip.id)
+      .then((fps) => {
+        setFundPayments(fps);
+        return fps;
+      })
+      .catch(() => [] as TripFundPayment[]);
+
     fetchTripMembers(trip.id).then(setMembers).catch(console.error);
     fetchIsOwner(trip.id).then(setOwnerStatus);
-    fetchExpenses(trip.id).then(setExpenses).catch(console.error);
-    fetchFunds(trip.id).then(setFunds).catch(console.error);
-    fetchFundPayments(trip.id).then(setFundPayments).catch(console.error);
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setCurrentUserId(user.id);
     });
+
+    Promise.all([activitiesP, mediaP, expensesP, fundsP, fundPaymentsP]).then(
+      ([acts, mediaItems, exps, fds, fps]) => {
+        widgetReady.current = true;
+        // Only push the open trip if it's the nearest one; otherwise push the
+        // real nearest trip so the widget never shows a non-nearest trip.
+        if (findNearestTrip(allTrips)?.id === trip.id) {
+          void updateWidgetFromTrip({
+            trip,
+            activities: acts,
+            expenses: exps,
+            funds: fds,
+            fundPayments: fps,
+            media: mediaItems,
+          });
+        } else {
+          void syncNearestTripToWidget(allTrips);
+        }
+      },
+    );
+
+    activitiesP.finally(() => setPlanLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip.id]);
+
+  // Realtime widget sync — fires whenever any relevant data changes after initial load
+  useEffect(() => {
+    console.log(
+      "[Widget] reactive check — ready:",
+      widgetReady.current,
+      "| startDate:",
+      trip.startDate,
+    );
+    if (!widgetReady.current) return;
+    if (findNearestTrip(allTrips)?.id === trip.id) {
+      void updateWidgetFromTrip({
+        trip,
+        activities,
+        expenses,
+        funds,
+        fundPayments,
+      });
+    } else {
+      void syncNearestTripToWidget(allTrips);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    trip.startDate,
+    trip.endDate,
+    trip.name,
+    trip.emoji,
+    expenses,
+    funds,
+    fundPayments,
+    activities,
+    allTrips,
+  ]);
 
   const handleAdd = useCallback(
     async (fields: Omit<Activity, "id" | "tripId" | "createdAt">) => {
@@ -136,114 +244,134 @@ export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabCha
   const videoCount = media.filter((m) => m.type === "video").length;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="h-[100svh] bg-slate-50 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="sticky top-0 z-30">
         {/* Frosted glass nav bar */}
         <div className="bg-white/80 backdrop-blur-xl border-b border-slate-100/80 shadow-sm pt-safe">
-          <div className="px-4 py-3 flex items-center gap-3">
+          {/* Dòng 1: back + tên + actions chính */}
+          <div className="px-4 py-2.5 flex items-center gap-2">
             <button
               onClick={onBack}
-              className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors flex-shrink-0"
+              className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors flex-shrink-0"
             >
-              <ArrowLeft size={16} />
+              <ArrowLeft size={15} />
             </button>
-            <span className="text-xl flex-shrink-0">{trip.emoji}</span>
+            <span className="text-lg flex-shrink-0">{trip.emoji}</span>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <h1 className="text-slate-900 font-bold text-[15px] truncate leading-tight">
                   {trip.name}
                 </h1>
                 {(() => {
                   const cd = getCountdown(trip.startDate, trip.endDate);
-                  if (cd.type === 'today') return (
-                    <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-600 animate-pulse">
-                      Hôm nay! 🎉
-                    </span>
-                  );
-                  if (cd.type === 'ongoing') return (
-                    <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-600">
-                      Đang diễn ra
-                    </span>
-                  );
-                  if (cd.type === 'upcoming') return (
-                    <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      cd.days <= 3 ? 'bg-amber-100 text-amber-600' :
-                      cd.days <= 7 ? 'bg-orange-100 text-orange-600' :
-                      'bg-blue-100 text-blue-600'
-                    }`}>
-                      {cd.label}
-                    </span>
-                  );
+                  if (cd.type === "today")
+                    return (
+                      <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 animate-pulse">
+                        Hôm nay! 🎉
+                      </span>
+                    );
+                  if (cd.type === "ongoing")
+                    return (
+                      <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">
+                        Đang diễn ra
+                      </span>
+                    );
+                  if (cd.type === "upcoming")
+                    return (
+                      <span
+                        className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                          cd.days <= 3
+                            ? "bg-amber-100 text-amber-600"
+                            : cd.days <= 7
+                              ? "bg-orange-100 text-orange-600"
+                              : "bg-blue-100 text-blue-600"
+                        }`}
+                      >
+                        {cd.label}
+                      </span>
+                    );
                   return null;
                 })()}
               </div>
-              <div className="flex items-center gap-2 text-slate-400 text-xs mt-0.5">
-                {trip.destination && (
-                  <span className="hidden sm:flex items-center gap-1 min-w-0 truncate max-w-[120px]">
-                    <Map size={10} className="flex-shrink-0" />
-                    {trip.destination}
-                  </span>
-                )}
-                <span className="flex items-center gap-1 flex-shrink-0">
-                  <CalendarDays size={10} />
-                  {formatDateRange(
-                    trip.startDate,
-                    trip.endDate,
-                    "Chưa đặt ngày",
-                  )}
-                </span>
-              </div>
             </div>
-            {/* Member avatars */}
+            {/* Actions */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={() => setShowInvite(true)}
+                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                <UserPlus size={13} />
+              </button>
+              {ownerStatus && (
+                <button
+                  onClick={() => setShowEdit(true)}
+                  className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors"
+                >
+                  <Pencil size={13} />
+                </button>
+              )}
+              <button
+                onClick={onLogout}
+                title="Đăng xuất"
+                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                <LogOut size={13} />
+              </button>
+            </div>
+          </div>
+
+          {/* Dòng 2: date + avatars */}
+          <div className="px-4 pb-2 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-slate-400 text-xs flex-1 min-w-0">
+              {trip.destination && (
+                <span className="hidden sm:flex items-center gap-1 truncate max-w-[100px]">
+                  <Map size={10} className="flex-shrink-0" />
+                  {trip.destination}
+                </span>
+              )}
+              <span className="flex items-center gap-1 truncate">
+                <CalendarDays size={10} className="flex-shrink-0" />
+                {formatDateRange(trip.startDate, trip.endDate, "Chưa đặt ngày")}
+              </span>
+            </div>
             {members.length > 1 && (
-              <div className="flex items-center -space-x-2 flex-shrink-0">
-                {members.slice(0, 3).map((m) => {
-                  const colors = ['bg-blue-400','bg-violet-400','bg-pink-400','bg-amber-400','bg-emerald-400'];
+              <div className="flex items-center -space-x-1.5 flex-shrink-0">
+                {members.slice(0, 4).map((m) => {
+                  const colors = [
+                    "bg-blue-400",
+                    "bg-violet-400",
+                    "bg-pink-400",
+                    "bg-amber-400",
+                    "bg-emerald-400",
+                  ];
                   let hash = 0;
-                  for (const c of m.userEmail) hash = (hash * 31 + c.charCodeAt(0)) & 0xfffff;
+                  for (const c of m.userEmail)
+                    hash = (hash * 31 + c.charCodeAt(0)) & 0xfffff;
                   const bg = colors[hash % colors.length];
                   return (
-                    <div key={m.id} className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold ${bg}`}>
+                    <div
+                      key={m.id}
+                      className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold ${bg}`}
+                    >
                       {m.displayName.slice(0, 2).toUpperCase()}
                     </div>
                   );
                 })}
-                {members.length > 3 && (
-                  <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-slate-500 text-[10px] font-bold">
-                    +{members.length - 3}
+                {members.length > 4 && (
+                  <div className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-slate-500 text-[9px] font-bold">
+                    +{members.length - 4}
                   </div>
                 )}
               </div>
             )}
-            <button
-              onClick={() => setShowInvite(true)}
-              className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
-            >
-              <UserPlus size={14} />
-            </button>
-            {ownerStatus && (
-              <button
-                onClick={() => setShowEdit(true)}
-                className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
-              >
-                <Pencil size={14} />
-              </button>
-            )}
-            <button
-              onClick={onLogout}
-              title="Đăng xuất"
-              className="w-9 h-9 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
-            >
-              <LogOut size={14} />
-            </button>
           </div>
 
           {/* Tab bar — same glass surface, just a separator line */}
           <div className="px-4 flex items-center border-t border-slate-100/60">
             <button
               onClick={() => setTab("plan")}
-              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-all ${
+              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${
                 tab === "plan"
                   ? "text-blue-600"
                   : "text-slate-400 hover:text-slate-600"
@@ -257,7 +385,7 @@ export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabCha
             </button>
             <button
               onClick={() => setTab("expense")}
-              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-all ${
+              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${
                 tab === "expense"
                   ? "text-emerald-600"
                   : "text-slate-400 hover:text-slate-600"
@@ -266,11 +394,13 @@ export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabCha
               <Wallet size={13} />
               Chi tiêu
               {expenses.length > 0 && (
-                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                  tab === "expense"
-                    ? "bg-emerald-100 text-emerald-600"
-                    : "bg-slate-100 text-slate-400"
-                }`}>
+                <span
+                  className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                    tab === "expense"
+                      ? "bg-emerald-100 text-emerald-600"
+                      : "bg-slate-100 text-slate-400"
+                  }`}
+                >
                   {expenses.length}
                 </span>
               )}
@@ -280,7 +410,7 @@ export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabCha
             </button>
             <button
               onClick={() => setTab("memory")}
-              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-all ${
+              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${
                 tab === "memory"
                   ? "text-amber-500"
                   : "text-slate-400 hover:text-slate-600"
@@ -320,7 +450,10 @@ export default function TripDetail({ trip, initialTab = 'plan', onBack, onTabCha
             funds={funds}
             fundPayments={fundPayments}
             onChange={setExpenses}
-            onFundsChange={(f, p) => { setFunds(f); setFundPayments(p); }}
+            onFundsChange={(f, p) => {
+              setFunds(f);
+              setFundPayments(p);
+            }}
           />
         ) : tab === "plan" ? (
           <div className="flex-1 overflow-auto">

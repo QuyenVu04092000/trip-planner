@@ -386,7 +386,7 @@ export default function TripList({
   const iconRotation = pullProgress * 180;
 
   return (
-    <div className="h-screen bg-slate-50 flex flex-col overflow-hidden">
+    <div className="h-[100svh] bg-slate-50 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-zinc-900 sticky top-0 z-30 border-b border-zinc-800 pt-safe flex-shrink-0">
         <div className="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
