@@ -8,14 +8,10 @@ import {
   Navigation,
 } from "lucide-react";
 import PlacesAutocomplete from "./PlacesAutocomplete";
-
-function openGoogleMaps(address: string) {
-  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
-  window.open(url, "_blank");
-}
 import type { Activity } from "../types";
 import DatePicker from "./DatePicker";
 import TimePicker from "./TimePicker";
+import MapView from "./MapView";
 import { parseCost, fmtMoney } from "../utils/format";
 
 const PALETTE = [
@@ -157,11 +153,13 @@ function Card({
   color,
   onEdit,
   onDelete,
+  onNavigate,
 }: {
   act: Activity;
   color: Palette;
   onEdit: () => void;
   onDelete: () => void;
+  onNavigate: () => void;
 }) {
   return (
     <div
@@ -201,7 +199,7 @@ function Card({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    openGoogleMaps(act.address);
+                    onNavigate();
                   }}
                   className="flex items-center gap-0.5 text-[10px] font-semibold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full flex-shrink-0 active:bg-blue-100 transition-colors"
                 >
@@ -375,6 +373,7 @@ export default function Itinerary({
   const [addDate, setAddDate] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(BLANK);
   const [saving, setSaving] = useState(false);
+  const [mapPlace, setMapPlace] = useState<Activity | null>(null);
 
   // Group by date
   const dateMap = new Map<string, Activity[]>();
@@ -532,6 +531,7 @@ export default function Itinerary({
                             color={color}
                             onEdit={() => startEdit(act)}
                             onDelete={() => onDelete(act.id)}
+                            onNavigate={() => setMapPlace(act)}
                           />
                         </div>
                       </div>
@@ -596,6 +596,7 @@ export default function Itinerary({
                         color={PALETTE[sortedDates.length % PALETTE.length]}
                         onEdit={() => startEdit(act)}
                         onDelete={() => onDelete(act.id)}
+                        onNavigate={() => setMapPlace(act)}
                       />
                     </div>
                   </div>
@@ -644,6 +645,13 @@ export default function Itinerary({
         >
           <Plus size={24} />
         </button>
+      )}
+
+      {mapPlace && (
+        <MapView
+          place={{ name: mapPlace.activity || mapPlace.address, address: mapPlace.address }}
+          onClose={() => setMapPlace(null)}
+        />
       )}
     </div>
   );

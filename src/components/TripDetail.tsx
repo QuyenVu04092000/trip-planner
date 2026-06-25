@@ -9,6 +9,7 @@ import {
   UserPlus,
   Wallet,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 import type {
   Trip,
@@ -18,6 +19,7 @@ import type {
   TripExpense,
   TripFund,
   TripFundPayment,
+  Suggestion,
 } from "../types";
 import {
   fetchActivities,
@@ -40,6 +42,7 @@ import {
   syncNearestTripToWidget,
 } from "../utils/widgetBridge";
 import Itinerary from "./Itinerary";
+import SuggestionsModal from "./SuggestionsModal";
 import Memory from "./Memory";
 import ExpenseTab from "./ExpenseTab";
 import CreateTripModal from "./CreateTripModal";
@@ -79,6 +82,7 @@ export default function TripDetail({
   const [planLoading, setPlanLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [members, setMembers] = useState<TripMember[]>([]);
   const [ownerStatus, setOwnerStatus] = useState(false);
   const [currentUserId, setCurrentUserId] = useState("");
@@ -200,6 +204,22 @@ export default function TripDetail({
       });
     },
     [trip.id],
+  );
+
+  // Thêm 1 gợi ý thành hoạt động trong lịch trình (chưa gán ngày/giờ — user tự sắp)
+  const handleAddSuggestion = useCallback(
+    async (s: Suggestion) => {
+      await handleAdd({
+        date: trip.startDate ?? "",
+        time: "",
+        activity: s.name,
+        address: s.address ?? "",
+        cost: "",
+        notes: s.description ?? "",
+        position: Date.now(),
+      });
+    },
+    [handleAdd, trip.startDate],
   );
 
   const handleUpdate = useCallback(
@@ -470,6 +490,17 @@ export default function TripDetail({
                 onDelete={handleDelete}
               />
             )}
+            {/* Nút gợi ý địa điểm (bottom-left, tránh đè FAB "thêm" bên phải) */}
+            {!planLoading && (
+              <button
+                onClick={() => setShowSuggestions(true)}
+                title="Gợi ý địa điểm"
+                className="fixed bottom-6 left-6 z-20 h-14 pl-4 pr-5 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl shadow-xl hover:shadow-2xl flex items-center gap-2 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+              >
+                <Sparkles size={20} />
+                <span className="text-sm font-semibold">Gợi ý</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex-1 overflow-hidden flex flex-col">
@@ -499,6 +530,15 @@ export default function TripDetail({
           isOwner={ownerStatus}
           onClose={() => setShowInvite(false)}
           onLeave={onBack}
+        />
+      )}
+
+      {showSuggestions && (
+        <SuggestionsModal
+          tripId={trip.id}
+          destination={trip.destination}
+          onAdd={handleAddSuggestion}
+          onClose={() => setShowSuggestions(false)}
         />
       )}
     </div>

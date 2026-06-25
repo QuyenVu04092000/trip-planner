@@ -6,9 +6,9 @@ self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
 // ── Push event: fired by server even when app is closed ───────────────────────
 self.addEventListener('push', (event) => {
   // Use scope-relative icon so the path is correct regardless of base URL
-  // e.g. "https://user.github.io/trip-planner/" + "icon-192.svg"
+  // e.g. "https://user.github.io/trip-planner/" + "icon-192.png"
   const scope = self.registration.scope;
-  const iconUrl = scope + 'icon-192.svg';
+  const iconUrl = scope + 'icon-192.png';
 
   const data = event.data?.json() ?? {};
   const title = data.title ?? 'TripMemo ✈️';

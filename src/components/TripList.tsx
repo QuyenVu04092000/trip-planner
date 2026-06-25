@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, MapPin, Calendar, Plane, Trash2, ImageIcon, LogOut, Bell, BellRing, BellOff, RefreshCw, UserCircle } from "lucide-react";
+import { Plus, MapPin, Calendar, Trash2, ImageIcon, LogOut, Bell, BellRing, BellOff, RefreshCw, UserCircle } from "lucide-react";
 import type { Trip } from "../types";
 import { fetchMediaItems, fetchMyProfile } from "../utils/db";
 import { formatDateRange, getDays, getCountdown } from "../utils/format";
@@ -391,8 +391,8 @@ export default function TripList({
       <header className="bg-zinc-900 sticky top-0 z-30 border-b border-zinc-800 pt-safe flex-shrink-0">
         <div className="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center ring-1 ring-white/10">
-              <Plane size={17} className="text-white" />
+            <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0">
+              <img src="/icon-192.png" alt="TripMemo" className="w-full h-full object-cover" />
             </div>
             <div>
               <h1 className="font-bold text-white text-[17px] leading-tight tracking-tight">

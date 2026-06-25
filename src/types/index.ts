@@ -104,6 +104,19 @@ export interface TripExpense {
   fundId?: string | null;  // set khi chi từ quỹ
 }
 
+export type SuggestionCategory = 'food' | 'cafe' | 'attraction' | 'checkin';
+
+export interface Suggestion {
+  name: string;
+  category: SuggestionCategory;
+  description: string;
+  area?: string;
+  address: string;
+  lat: number | null;
+  lon: number | null;
+  photoUrl?: string | null;  // ảnh thật từ Foursquare (nếu có key); null → fallback ảnh-map
+}
+
 export type AppPage =
   | { page: 'list' }
   | { page: 'trip'; tripId: string; tab: 'plan' | 'memory' | 'expense' }

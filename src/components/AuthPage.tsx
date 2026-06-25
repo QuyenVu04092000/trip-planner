@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../utils/supabase';
 import {
-  Plane, Mail, Lock, Eye, EyeOff, ArrowRight,
+  Mail, Lock, Eye, EyeOff, ArrowRight,
   CheckCircle, AlertCircle, MapPin, Image, Shield,
 } from 'lucide-react';
 
@@ -25,8 +25,8 @@ function HeroPanel() {
 
       {/* Top: logo */}
       <div className="relative flex items-center gap-3">
-        <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center ring-1 ring-white/30">
-          <Plane size={18} className="text-white" />
+        <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0">
+          <img src="/icon-192.png" alt="TripMemo" className="w-full h-full object-cover" />
         </div>
         <span className="text-white font-bold text-lg tracking-tight">TripMemo</span>
       </div>
@@ -123,8 +123,8 @@ export default function AuthPage() {
 
         {/* Mobile-only top bar */}
         <div className="lg:hidden flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 bg-white pt-safe">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-violet-600 rounded-lg flex items-center justify-center">
-            <Plane size={14} className="text-white" />
+          <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0">
+            <img src="/icon-192.png" alt="TripMemo" className="w-full h-full object-cover" />
           </div>
           <span className="font-bold text-slate-800 text-base tracking-tight">TripMemo</span>
         </div>

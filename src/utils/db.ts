@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
-import type { Trip, Activity, MediaItem, TripMember, TripInvite, TripExpense, TripFund, TripFundPayment, UserProfile } from '../types';
+import { api } from './api';
+import type { Trip, Activity, MediaItem, TripMember, TripInvite, TripExpense, TripFund, TripFundPayment, UserProfile, Suggestion } from '../types';
 import exifr from 'exifr';
 
 
@@ -94,87 +95,21 @@ function rowToMediaItem(r: Record<string, unknown>): MediaItem {
 // ── Trips ─────────────────────────────────────────────────────────────────────
 
 export async function fetchTrips(): Promise<Trip[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  // 1. Own trips — explicit filter, không phụ thuộc RLS
-  const { data: ownData, error: e1 } = await supabase
-    .from('trips')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false });
-  if (e1) throw e1;
-
-  // 2. Shared trips — lấy trip_ids từ trip_members (role = 'member')
-  const { data: memberRows, error: e2 } = await supabase
-    .from('trip_members')
-    .select('trip_id')
-    .eq('user_id', user.id)
-    .eq('role', 'member');
-  if (e2) throw e2;
-
-  const sharedIds = (memberRows ?? []).map((r: any) => r.trip_id as string);
-  let sharedTrips: Trip[] = [];
-  if (sharedIds.length > 0) {
-    const { data: sharedData, error: e3 } = await supabase
-      .from('trips')
-      .select('*')
-      .in('id', sharedIds);
-    if (e3) throw e3;
-    sharedTrips = (sharedData ?? []).map(rowToTrip);
-  }
-
-  // 3. Gộp + dedup + sort
-  const own = (ownData ?? []).map(rowToTrip);
-  const merged = [...own];
-  for (const t of sharedTrips) {
-    if (!merged.find(x => x.id === t.id)) merged.push(t);
-  }
-  merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return merged;
+  const rows = await api.get<Record<string, unknown>[]>('/trips');
+  return rows.map(rowToTrip);
 }
 
 export async function createTrip(trip: Trip): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  const { error } = await supabase.from('trips').insert({ ...tripToRow(trip), user_id: user.id });
-  if (error) throw error;
-  // Add owner to trip_members
-  await supabase.from('trip_members').insert({
-    id: `mem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    trip_id: trip.id,
-    user_id: user.id,
-    user_email: user.email ?? '',
-    role: 'owner',
-  });
+  await api.post('/trips', tripToRow(trip));
 }
 
 export async function updateTrip(trip: Trip): Promise<void> {
-  // Also backfill user_id in case trip was created before the column existed
-  const { data: { user } } = await supabase.auth.getUser();
-  const { error } = await supabase
-    .from('trips')
-    .update({ ...tripToRow(trip), ...(user?.id ? { user_id: user.id } : {}) })
-    .eq('id', trip.id);
-  if (error) throw error;
+  await api.put('/trips', tripToRow(trip), { id: trip.id });
 }
 
 export async function deleteTrip(tripId: string): Promise<void> {
-  const { data: mediaRows } = await supabase
-    .from('media_items').select('storage_path, thumbnail_path').eq('trip_id', tripId);
-
-  if (mediaRows?.length) {
-    const paths: string[] = [];
-    for (const r of mediaRows as { storage_path: string; thumbnail_path?: string }[]) {
-      if (r.storage_path) paths.push(r.storage_path);
-      if (r.thumbnail_path) paths.push(r.thumbnail_path);
-    }
-    if (paths.length) await supabase.storage.from('trip-media').remove(paths);
-  }
-
   invalidateMediaCache(tripId);
-  const { error } = await supabase.from('trips').delete().eq('id', tripId);
-  if (error) throw error;
+  await api.delete('/trips', { id: tripId });
 }
 
 // ── Activities ────────────────────────────────────────────────────────────────
@@ -195,11 +130,8 @@ function rowToActivity(r: Record<string, unknown>): Activity {
 }
 
 export async function fetchActivities(tripId: string): Promise<Activity[]> {
-  const { data, error } = await supabase
-    .from('activities').select('*').eq('trip_id', tripId)
-    .order('position').order('created_at');
-  if (error) throw error;
-  return (data ?? []).map(rowToActivity);
+  const rows = await api.get<Record<string, unknown>[]>('/activities', { tripId });
+  return rows.map(rowToActivity);
 }
 
 export async function createActivity(
@@ -213,9 +145,17 @@ export async function createActivity(
     address: fields.address, cost: fields.cost, notes: fields.notes,
     position: fields.position,
   };
-  const { data, error } = await supabase.from('activities').insert(row).select().single();
-  if (error) throw error;
-  return rowToActivity(data as Record<string, unknown>);
+  const data = await api.post<Record<string, unknown>>('/activities', row);
+  return rowToActivity(data);
+}
+
+// ── Gợi ý địa điểm (Gemini + Mapbox, cache phía server) ─────────────────────────
+export async function fetchSuggestions(
+  tripId: string,
+  destination: string,
+  refresh = false,
+): Promise<Suggestion[]> {
+  return api.post<Suggestion[]>('/suggestions', { tripId, destination, refresh });
 }
 
 export async function updateActivity(
@@ -230,13 +170,11 @@ export async function updateActivity(
   if (fields.cost     !== undefined) row.cost     = fields.cost;
   if (fields.notes    !== undefined) row.notes    = fields.notes;
   if (fields.position !== undefined) row.position = fields.position;
-  const { error } = await supabase.from('activities').update(row).eq('id', id);
-  if (error) throw error;
+  await api.put('/activities', row, { id });
 }
 
 export async function deleteActivity(id: string): Promise<void> {
-  const { error } = await supabase.from('activities').delete().eq('id', id);
-  if (error) throw error;
+  await api.delete('/activities', { id });
 }
 
 // ── Media ─────────────────────────────────────────────────────────────────────
@@ -245,12 +183,9 @@ export async function fetchMediaItems(tripId: string): Promise<MediaItem[]> {
   const cached = getCached(tripId);
   if (cached) return cached;
 
-  const { data, error } = await supabase
-    .from('media_items').select('*').eq('trip_id', tripId)
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-
-  const items = (data ?? []).map(rowToMediaItem);
+  const rows = await api.get<Record<string, unknown>[]>('/media', { tripId });
+  // Edge Function returns rows with publicUrl + thumbnailUrl already computed
+  const items = rows.map(r => rowToMediaItem(r));
   setCache(tripId, items);
   return items;
 }
@@ -500,15 +435,15 @@ export async function uploadMedia(
     storagePath, thumbnailPath, publicUrl, thumbnailUrl,
   };
 
-  const { error: dbError } = await supabase.from('media_items').insert({
-    id: item.id, trip_id: item.tripId, type: item.type,
-    name: item.name, size: item.size, caption: item.caption,
-    storage_path: item.storagePath, created_at: item.createdAt,
-    taken_at: item.takenAt ?? null,
-    thumbnail_path: thumbnailPath ?? null,
-  });
-
-  if (dbError) {
+  try {
+    await api.post('/media', {
+      id: item.id, trip_id: item.tripId, type: item.type,
+      name: item.name, size: item.size, caption: item.caption,
+      storage_path: item.storagePath, created_at: item.createdAt,
+      taken_at: item.takenAt ?? null,
+      thumbnail_path: thumbnailPath ?? null,
+    });
+  } catch (dbError) {
     const toRemove = [storagePath, thumbnailPath].filter(Boolean) as string[];
     await supabase.storage.from('trip-media').remove(toRemove);
     throw dbError;
@@ -519,29 +454,25 @@ export async function uploadMedia(
 }
 
 export async function updateMediaCaption(id: string, caption: string): Promise<void> {
-  const { error } = await supabase.from('media_items').update({ caption }).eq('id', id);
-  if (error) throw error;
+  await api.put('/media', { caption }, { id });
 }
 
 export async function deleteMediaItem(item: MediaItem): Promise<void> {
-  const toRemove = [item.storagePath, item.thumbnailPath].filter(Boolean) as string[];
-  if (toRemove.length) await supabase.storage.from('trip-media').remove(toRemove);
-  const { error } = await supabase.from('media_items').delete().eq('id', item.id);
-  if (error) throw error;
+  // Edge Function handles storage cleanup + DB delete atomically
+  await api.delete('/media', { id: item.id });
   invalidateMediaCache(item.tripId);
 }
 
 // ── Invite / Members ──────────────────────────────────────────────────────────
 
-function rowToMember(r: Record<string, unknown>, profileMap: Record<string, string> = {}): TripMember {
+function rowToMember(r: Record<string, unknown>): TripMember {
   const email = (r.user_email as string) ?? '';
-  const userId = r.user_id as string;
   return {
     id: r.id as string,
     tripId: r.trip_id as string,
-    userId,
+    userId: r.user_id as string,
     userEmail: email,
-    displayName: profileMap[userId] || email.split('@')[0],
+    displayName: (r.display_name as string) || email.split('@')[0],
     role: (r.role as 'owner' | 'member'),
     joinedAt: r.joined_at as string,
   };
@@ -563,108 +494,57 @@ function rowToInvite(r: Record<string, unknown>): TripInvite {
 }
 
 export async function fetchTripMembers(tripId: string): Promise<TripMember[]> {
-  const { data, error } = await supabase
-    .from('trip_members').select('*').eq('trip_id', tripId)
-    .order('joined_at', { ascending: true });
-  if (error) throw error;
-  const rows = data ?? [];
-  const userIds = rows.map(r => r.user_id as string);
-  const profileMap: Record<string, string> = {};
-  if (userIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('user_profiles').select('user_id, display_name').in('user_id', userIds);
-    for (const p of profiles ?? []) profileMap[p.user_id] = p.display_name;
-  }
-  return rows.map(r => rowToMember(r, profileMap));
+  const rows = await api.get<Record<string, unknown>[]>('/members', { tripId });
+  return rows.map(r => rowToMember(r));
 }
 
 export async function fetchMyProfile(): Promise<UserProfile | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase
-    .from('user_profiles').select('*').eq('user_id', user.id).maybeSingle();
-  return data ? { userId: data.user_id, displayName: data.display_name } : null;
+  const data = await api.get<Record<string, unknown> | null>('/profile');
+  return data ? { userId: data.user_id as string, displayName: data.display_name as string } : null;
 }
 
 export async function upsertProfile(displayName: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  const { error } = await supabase.from('user_profiles').upsert({
-    user_id: user.id,
-    display_name: displayName.trim(),
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id' });
-  if (error) throw error;
+  await api.put('/profile', { displayName });
 }
 
 export async function createInvite(trip: Trip): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-  const token = crypto.randomUUID();
-  const id = `inv_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { error } = await supabase.from('trip_invites').insert({
-    id,
-    trip_id: trip.id,
-    token,
-    created_by: user.id,
-    trip_name: trip.name,
-    trip_emoji: trip.emoji,
-    owner_email: user.email ?? '',
-    status: 'active',
-    expires_at: expiresAt,
-  });
-  if (error) throw error;
+  const { token } = await api.post<{ token: string }>(
+    '/members',
+    { tripId: trip.id, tripName: trip.name, tripEmoji: trip.emoji },
+    { action: 'invite' },
+  );
   return token;
 }
 
 export async function getInviteByToken(token: string): Promise<TripInvite | null> {
-  const { data, error } = await supabase
-    .from('trip_invites').select('*').eq('token', token).single();
-  if (error || !data) return null;
-  return rowToInvite(data as Record<string, unknown>);
+  const data = await api.get<Record<string, unknown> | null>('/members', {
+    action: 'invite', token,
+  });
+  return data ? rowToInvite(data) : null;
 }
 
 export async function acceptInvite(token: string): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const invite = await getInviteByToken(token);
-  if (!invite || invite.status !== 'active') return null;
-  if (new Date(invite.expiresAt) < new Date()) return null;
-
-  // Dùng RPC với SECURITY DEFINER để bypass RLS hoàn toàn
-  // Hàm SQL kiểm tra auth.uid() bên trong nên vẫn an toàn
-  const { error: rpcError } = await supabase.rpc('accept_trip_invite', {
-    p_trip_id:    invite.tripId,
-    p_user_id:    user.id,
-    p_user_email: user.email ?? '',
-  });
-  if (rpcError) throw rpcError;
-
-  return invite.tripId;
+  const { tripId } = await api.post<{ tripId: string }>(
+    '/members',
+    { token },
+    { action: 'accept' },
+  );
+  return tripId ?? null;
 }
 
 export async function leaveTrip(tripId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-  const { error } = await supabase.from('trip_members')
-    .delete().eq('trip_id', tripId).eq('user_id', user.id).eq('role', 'member');
-  if (error) throw error;
+  await api.delete('/members', { action: 'leave', tripId });
 }
 
 export async function removeMember(tripId: string, userId: string): Promise<void> {
-  const { error } = await supabase.from('trip_members')
-    .delete().eq('trip_id', tripId).eq('user_id', userId).eq('role', 'member');
-  if (error) throw error;
+  await api.delete('/members', { action: 'remove', tripId, memberId: userId });
 }
 
 export async function isOwner(tripId: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data } = await supabase.from('trip_members')
-    .select('role').eq('trip_id', tripId).eq('user_id', user.id).single();
-  return (data as any)?.role === 'owner';
+  const { isOwner: result } = await api.get<{ isOwner: boolean }>('/members', {
+    action: 'is-owner', tripId,
+  });
+  return result;
 }
 
 // ── Trip Expenses ─────────────────────────────────────────────────────────────
@@ -685,17 +565,12 @@ function rowToExpense(r: Record<string, unknown>): TripExpense {
 }
 
 export async function fetchExpenses(tripId: string): Promise<TripExpense[]> {
-  const { data, error } = await supabase
-    .from('trip_expenses')
-    .select('*')
-    .eq('trip_id', tripId)
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map(rowToExpense);
+  const rows = await api.get<Record<string, unknown>[]>('/expenses', { tripId });
+  return rows.map(rowToExpense);
 }
 
 export async function createExpense(expense: TripExpense): Promise<void> {
-  const { error } = await supabase.from('trip_expenses').insert({
+  await api.post('/expenses', {
     id:            expense.id,
     trip_id:       expense.tripId,
     description:   expense.description,
@@ -706,11 +581,10 @@ export async function createExpense(expense: TripExpense): Promise<void> {
     date:          expense.date || null,
     fund_id:       expense.fundId ?? null,
   });
-  if (error) throw error;
 }
 
 export async function updateExpense(expense: TripExpense): Promise<void> {
-  const { error } = await supabase.from('trip_expenses').update({
+  await api.put('/expenses', {
     description:   expense.description,
     amount:        expense.amount,
     paid_by:       expense.paidBy,
@@ -718,16 +592,11 @@ export async function updateExpense(expense: TripExpense): Promise<void> {
     splits:        expense.splits,
     date:          expense.date || null,
     fund_id:       expense.fundId ?? null,
-  }).eq('id', expense.id);
-  if (error) throw error;
+  }, { id: expense.id });
 }
 
 export async function deleteExpense(expenseId: string): Promise<void> {
-  const { error } = await supabase
-    .from('trip_expenses')
-    .delete()
-    .eq('id', expenseId);
-  if (error) throw error;
+  await api.delete('/expenses', { id: expenseId });
 }
 
 // ── Trip Funds ────────────────────────────────────────────────────────────────
@@ -756,60 +625,43 @@ function rowToFundPayment(r: Record<string, unknown>): TripFundPayment {
 }
 
 export async function fetchFunds(tripId: string): Promise<TripFund[]> {
-  const { data, error } = await supabase
-    .from('trip_funds')
-    .select('*')
-    .eq('trip_id', tripId)
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map(rowToFund);
+  const rows = await api.get<Record<string, unknown>[]>('/funds', { tripId });
+  return rows.map(rowToFund);
 }
 
 export async function createFund(fund: TripFund, payments: TripFundPayment[]): Promise<void> {
-  const { error: e1 } = await supabase.from('trip_funds').insert({
-    id:                fund.id,
-    trip_id:           fund.tripId,
-    description:       fund.description,
-    amount_per_person: fund.amountPerPerson,
-    created_by:        fund.createdBy,
-    created_at:        fund.createdAt,
+  await api.post('/funds', {
+    fund: {
+      id:                fund.id,
+      trip_id:           fund.tripId,
+      description:       fund.description,
+      amount_per_person: fund.amountPerPerson,
+      created_by:        fund.createdBy,
+      created_at:        fund.createdAt,
+    },
+    payments: payments.map(p => ({
+      id:         p.id,
+      fund_id:    p.fundId,
+      trip_id:    p.tripId,
+      user_id:    p.userId,
+      user_email: p.userEmail,
+      paid:       p.paid,
+      paid_at:    p.paidAt,
+    })),
   });
-  if (e1) throw e1;
-
-  if (payments.length > 0) {
-    const { error: e2 } = await supabase.from('trip_fund_payments').insert(
-      payments.map(p => ({
-        id:         p.id,
-        fund_id:    p.fundId,
-        trip_id:    p.tripId,
-        user_id:    p.userId,
-        user_email: p.userEmail,
-        paid:       p.paid,
-        paid_at:    p.paidAt,
-      }))
-    );
-    if (e2) throw e2;
-  }
 }
 
 export async function deleteFund(fundId: string): Promise<void> {
-  const { error } = await supabase.from('trip_funds').delete().eq('id', fundId);
-  if (error) throw error;
+  await api.delete('/funds', { id: fundId });
 }
 
 export async function fetchFundPayments(tripId: string): Promise<TripFundPayment[]> {
-  const { data, error } = await supabase
-    .from('trip_fund_payments')
-    .select('*')
-    .eq('trip_id', tripId);
-  if (error) throw error;
-  return (data ?? []).map(rowToFundPayment);
+  const rows = await api.get<Record<string, unknown>[]>('/funds', {
+    tripId, resource: 'payments',
+  });
+  return rows.map(rowToFundPayment);
 }
 
 export async function toggleFundPayment(paymentId: string, paid: boolean): Promise<void> {
-  const { error } = await supabase
-    .from('trip_fund_payments')
-    .update({ paid, paid_at: paid ? new Date().toISOString() : null })
-    .eq('id', paymentId);
-  if (error) throw error;
+  await api.patch('/funds', { paid }, { id: paymentId });
 }
