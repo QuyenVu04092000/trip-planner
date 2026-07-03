@@ -7,7 +7,7 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
 interface Props {
-  onSelect: (address: string) => void;
+  onSelect: (address: string, lat?: number, lon?: number) => void;
   onClose: () => void;
   initialValue?: string;
 }
@@ -75,6 +75,7 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const selectedRef = useRef<{ lat: number; lon: number } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Session token: 1 UUID per lần mở MapPicker (Mapbox billing theo session)
   const sessionToken = useRef(crypto.randomUUID());
@@ -128,6 +129,7 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
   }, []);
 
   function placeMarker(map: mapboxgl.Map, lat: number, lng: number) {
+    selectedRef.current = { lat, lon: lng };
     markerRef.current?.remove();
     markerRef.current = new mapboxgl.Marker({ color: "#3b82f6" })
       .setLngLat([lng, lat])
@@ -288,7 +290,7 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
               {selectedAddress}
             </p>
             <button
-              onClick={() => onSelect(selectedAddress)}
+              onClick={() => onSelect(selectedAddress, selectedRef.current?.lat, selectedRef.current?.lon)}
               className="flex items-center gap-1.5 bg-blue-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl flex-shrink-0 active:bg-blue-700 transition-colors"
             >
               <Check size={15} />

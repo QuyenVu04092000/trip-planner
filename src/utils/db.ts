@@ -4,6 +4,37 @@ import type { Trip, Activity, MediaItem, TripMember, TripInvite, TripExpense, Tr
 import exifr from 'exifr';
 
 
+// ── Offline-first read cache (localStorage) ───────────────────────────────────
+// Cache kết quả ĐỌC; khi mất mạng / fetch lỗi → trả cache (xem được offline,
+// read-only). Ghi vẫn cần mạng.
+function lsKey(name: string): string { return `tm_cache_${name}`; }
+
+function readLS<T>(name: string): T | null {
+  try {
+    const v = localStorage.getItem(lsKey(name));
+    return v ? (JSON.parse(v) as T) : null;
+  } catch { return null; }
+}
+
+function writeLS(name: string, data: unknown): void {
+  try { localStorage.setItem(lsKey(name), JSON.stringify(data)); } catch { /* quota */ }
+}
+
+async function cachedFetch<T>(name: string, fetcher: () => Promise<T>): Promise<T> {
+  try {
+    const data = await fetcher();
+    writeLS(name, data);
+    return data;
+  } catch (err) {
+    const cached = readLS<T>(name);
+    if (cached !== null) {
+      console.warn('[offline] dùng dữ liệu cache cho', name);
+      return cached;
+    }
+    throw err;
+  }
+}
+
 // ── In-memory cache for media (TTL 2 min) ─────────────────────────────────────
 
 const mediaCache = new Map<string, { items: MediaItem[]; ts: number }>();
@@ -47,6 +78,8 @@ function rowToTrip(r: Record<string, unknown>): Trip {
     id: r.id as string,
     name: r.name as string,
     destination: (r.destination as string) ?? '',
+    lat: (r.lat as number) ?? null,
+    lon: (r.lon as number) ?? null,
     startDate: (r.start_date as string) ?? '',
     endDate: (r.end_date as string) ?? '',
     coverColor: (r.cover_color as string) ?? 'from-blue-400 to-indigo-600',
@@ -59,6 +92,7 @@ function rowToTrip(r: Record<string, unknown>): Trip {
 function tripToRow(t: Trip) {
   return {
     id: t.id, name: t.name, destination: t.destination,
+    lat: t.lat ?? null, lon: t.lon ?? null,
     start_date: t.startDate, end_date: t.endDate,
     cover_color: t.coverColor, emoji: t.emoji,
     created_at: t.createdAt, updated_at: t.updatedAt,
@@ -69,12 +103,12 @@ function rowToMediaItem(r: Record<string, unknown>): MediaItem {
   const storagePath = (r.storage_path as string) ?? '';
   const thumbnailPath = (r.thumbnail_path as string) || undefined;
   const type = r.type as 'image' | 'video';
-  const { publicUrl, thumbnailUrl: imgThumbUrl } = getUrls(storagePath, type);
 
-  // Videos: use dedicated thumbnail image if available, otherwise fall back
-  const thumbnailUrl = (type === 'video' && thumbnailPath)
-    ? supabase.storage.from('trip-media').getPublicUrl(thumbnailPath).data.publicUrl
-    : imgThumbUrl;
+  // Edge Function (bucket private) đã ký sẵn signed URL → ƯU TIÊN dùng.
+  // Chỉ fallback getUrls khi thiếu (vd dùng nội bộ ngoài luồng edge function).
+  const fallback = getUrls(storagePath, type);
+  const publicUrl = (r.publicUrl as string) ?? fallback.publicUrl;
+  const thumbnailUrl = (r.thumbnailUrl as string) ?? fallback.thumbnailUrl;
 
   return {
     id: r.id as string,
@@ -95,8 +129,10 @@ function rowToMediaItem(r: Record<string, unknown>): MediaItem {
 // ── Trips ─────────────────────────────────────────────────────────────────────
 
 export async function fetchTrips(): Promise<Trip[]> {
-  const rows = await api.get<Record<string, unknown>[]>('/trips');
-  return rows.map(rowToTrip);
+  return cachedFetch('trips', async () => {
+    const rows = await api.get<Record<string, unknown>[]>('/trips');
+    return rows.map(rowToTrip);
+  });
 }
 
 export async function createTrip(trip: Trip): Promise<void> {
@@ -122,6 +158,8 @@ function rowToActivity(r: Record<string, unknown>): Activity {
     time: (r.time as string) ?? '',
     activity: (r.activity as string) ?? '',
     address: (r.address as string) ?? '',
+    lat: (r.lat as number) ?? null,
+    lon: (r.lon as number) ?? null,
     cost: (r.cost as string) ?? '',
     notes: (r.notes as string) ?? '',
     position: (r.position as number) ?? 0,
@@ -130,8 +168,10 @@ function rowToActivity(r: Record<string, unknown>): Activity {
 }
 
 export async function fetchActivities(tripId: string): Promise<Activity[]> {
-  const rows = await api.get<Record<string, unknown>[]>('/activities', { tripId });
-  return rows.map(rowToActivity);
+  return cachedFetch(`activities_${tripId}`, async () => {
+    const rows = await api.get<Record<string, unknown>[]>('/activities', { tripId });
+    return rows.map(rowToActivity);
+  });
 }
 
 export async function createActivity(
@@ -142,7 +182,8 @@ export async function createActivity(
   const row = {
     id, trip_id: tripId,
     date: fields.date, time: fields.time, activity: fields.activity,
-    address: fields.address, cost: fields.cost, notes: fields.notes,
+    address: fields.address, lat: fields.lat ?? null, lon: fields.lon ?? null,
+    cost: fields.cost, notes: fields.notes,
     position: fields.position,
   };
   const data = await api.post<Record<string, unknown>>('/activities', row);
@@ -167,6 +208,8 @@ export async function updateActivity(
   if (fields.time     !== undefined) row.time     = fields.time;
   if (fields.activity !== undefined) row.activity = fields.activity;
   if (fields.address  !== undefined) row.address  = fields.address;
+  if (fields.lat      !== undefined) row.lat      = fields.lat;
+  if (fields.lon      !== undefined) row.lon      = fields.lon;
   if (fields.cost     !== undefined) row.cost     = fields.cost;
   if (fields.notes    !== undefined) row.notes    = fields.notes;
   if (fields.position !== undefined) row.position = fields.position;
@@ -402,11 +445,13 @@ export async function uploadMedia(
   if (uploadError) throw uploadError;
 
   const type: 'image' | 'video' = file.type.startsWith('image/') ? 'image' : 'video';
-  const { publicUrl, thumbnailUrl: imgThumbUrl } = getUrls(storagePath, type);
+  // Preview tức thời bằng object URL local (bucket private không cho public URL).
+  // Sau khi fetchMediaItems refetch, signed URL từ edge function sẽ thay thế.
+  const publicUrl = URL.createObjectURL(file);
+  let thumbnailUrl: string | undefined = publicUrl;
 
   // Generate + upload thumbnail for videos
   let thumbnailPath: string | undefined;
-  let thumbnailUrl: string | undefined = imgThumbUrl;
 
   if (type === 'video') {
     const thumbBlob = await generateVideoThumbnail(file);
@@ -415,7 +460,7 @@ export async function uploadMedia(
       const { error: thumbErr } = await supabase.storage
         .from('trip-media').upload(thumbnailPath, thumbBlob, { upsert: false });
       if (!thumbErr) {
-        thumbnailUrl = supabase.storage.from('trip-media').getPublicUrl(thumbnailPath).data.publicUrl;
+        thumbnailUrl = URL.createObjectURL(thumbBlob);
       } else {
         thumbnailPath = undefined; // ignore thumbnail error, keep video upload
       }
@@ -494,8 +539,10 @@ function rowToInvite(r: Record<string, unknown>): TripInvite {
 }
 
 export async function fetchTripMembers(tripId: string): Promise<TripMember[]> {
-  const rows = await api.get<Record<string, unknown>[]>('/members', { tripId });
-  return rows.map(r => rowToMember(r));
+  return cachedFetch(`members_${tripId}`, async () => {
+    const rows = await api.get<Record<string, unknown>[]>('/members', { tripId });
+    return rows.map(r => rowToMember(r));
+  });
 }
 
 export async function fetchMyProfile(): Promise<UserProfile | null> {
@@ -565,8 +612,10 @@ function rowToExpense(r: Record<string, unknown>): TripExpense {
 }
 
 export async function fetchExpenses(tripId: string): Promise<TripExpense[]> {
-  const rows = await api.get<Record<string, unknown>[]>('/expenses', { tripId });
-  return rows.map(rowToExpense);
+  return cachedFetch(`expenses_${tripId}`, async () => {
+    const rows = await api.get<Record<string, unknown>[]>('/expenses', { tripId });
+    return rows.map(rowToExpense);
+  });
 }
 
 export async function createExpense(expense: TripExpense): Promise<void> {
@@ -625,8 +674,10 @@ function rowToFundPayment(r: Record<string, unknown>): TripFundPayment {
 }
 
 export async function fetchFunds(tripId: string): Promise<TripFund[]> {
-  const rows = await api.get<Record<string, unknown>[]>('/funds', { tripId });
-  return rows.map(rowToFund);
+  return cachedFetch(`funds_${tripId}`, async () => {
+    const rows = await api.get<Record<string, unknown>[]>('/funds', { tripId });
+    return rows.map(rowToFund);
+  });
 }
 
 export async function createFund(fund: TripFund, payments: TripFundPayment[]): Promise<void> {
@@ -656,10 +707,12 @@ export async function deleteFund(fundId: string): Promise<void> {
 }
 
 export async function fetchFundPayments(tripId: string): Promise<TripFundPayment[]> {
-  const rows = await api.get<Record<string, unknown>[]>('/funds', {
-    tripId, resource: 'payments',
+  return cachedFetch(`fundpayments_${tripId}`, async () => {
+    const rows = await api.get<Record<string, unknown>[]>('/funds', {
+      tripId, resource: 'payments',
+    });
+    return rows.map(rowToFundPayment);
   });
-  return rows.map(rowToFundPayment);
 }
 
 export async function toggleFundPayment(paymentId: string, paid: boolean): Promise<void> {

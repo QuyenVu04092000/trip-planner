@@ -1,18 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Plus,
   Trash2,
   MapPin,
   CalendarDays,
-  DollarSign,
   Navigation,
+  Shuffle,
 } from "lucide-react";
 import PlacesAutocomplete from "./PlacesAutocomplete";
 import type { Activity } from "../types";
+import { optimizeOrder } from "../utils/routeOptimize";
+import { geocodePlace, fetchWeather, weatherInfo, type DayWeather } from "../utils/weather";
+import { openDirections } from "../utils/maps";
 import DatePicker from "./DatePicker";
 import TimePicker from "./TimePicker";
-import MapView from "./MapView";
-import { parseCost, fmtMoney } from "../utils/format";
 
 const PALETTE = [
   {
@@ -79,6 +80,8 @@ const BLANK: FormData = {
   time: "",
   activity: "",
   address: "",
+  lat: null,
+  lon: null,
   cost: "",
   notes: "",
   position: 0,
@@ -87,6 +90,9 @@ const BLANK: FormData = {
 interface Props {
   activities: Activity[];
   startDate?: string;
+  destination?: string;
+  destLat?: number | null;
+  destLon?: number | null;
   onAdd: (
     fields: Omit<Activity, "id" | "tripId" | "createdAt">,
   ) => Promise<void>;
@@ -128,8 +134,6 @@ function normDate(s: string) {
   }
   return s;
 }
-
-// parseCost, fmtMoney → imported from utils/format
 
 function nextDefaultDate(activities: Activity[], startDate: string): string {
   const validDates = activities
@@ -188,7 +192,7 @@ function Card({
             </span>
           )}
         </p>
-        {(act.address || act.cost || act.notes) && (
+        {(act.address || act.notes) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
             {act.address && (
               <span className="flex items-center gap-1">
@@ -206,11 +210,6 @@ function Card({
                   <Navigation size={8} />
                   Dẫn đường
                 </button>
-              </span>
-            )}
-            {act.cost && (
-              <span className="text-xs font-semibold text-emerald-600">
-                {act.cost}đ
               </span>
             )}
             {act.notes && (
@@ -308,36 +307,25 @@ function EditForm({
         </span>
         <PlacesAutocomplete
           value={form.address}
-          onChange={(v) => onChange({ ...form, address: v })}
+          onChange={(v, coords) =>
+            onChange({ ...form, address: v, lat: coords?.lat ?? null, lon: coords?.lon ?? null })
+          }
           placeholder="Tìm địa điểm..."
           className={inp}
         />
       </div>
 
-      {/* Cost + Notes row */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <span className="text-xs font-semibold text-slate-500 block mb-1.5">
-            Chi phí
-          </span>
-          <input
-            className={inp}
-            value={form.cost}
-            onChange={(e) => onChange({ ...form, cost: e.target.value })}
-            placeholder="500000"
-          />
-        </div>
-        <div>
-          <span className="text-xs font-semibold text-slate-500 block mb-1.5">
-            Ghi chú
-          </span>
-          <input
-            className={inp}
-            value={form.notes}
-            onChange={(e) => onChange({ ...form, notes: e.target.value })}
-            placeholder="Ghi chú thêm"
-          />
-        </div>
+      {/* Notes row */}
+      <div>
+        <span className="text-xs font-semibold text-slate-500 block mb-1.5">
+          Ghi chú
+        </span>
+        <input
+          className={inp}
+          value={form.notes}
+          onChange={(e) => onChange({ ...form, notes: e.target.value })}
+          placeholder="Ghi chú thêm"
+        />
       </div>
 
       {/* Actions */}
@@ -365,6 +353,9 @@ function EditForm({
 export default function Itinerary({
   activities,
   startDate = "",
+  destination = "",
+  destLat = null,
+  destLon = null,
   onAdd,
   onUpdate,
   onDelete,
@@ -373,7 +364,25 @@ export default function Itinerary({
   const [addDate, setAddDate] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(BLANK);
   const [saving, setSaving] = useState(false);
-  const [mapPlace, setMapPlace] = useState<Activity | null>(null);
+  const [weather, setWeather] = useState<Record<string, DayWeather>>({});
+
+  // Dự báo thời tiết cho điểm đến. Ưu tiên toạ độ lưu sẵn của trip; không có
+  // thì geocode chuỗi điểm đến. ~16 ngày tới.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let coords: { lat: number; lon: number } | null =
+        destLat != null && destLon != null ? { lat: destLat, lon: destLon } : null;
+      if (!coords) {
+        if (!destination) return;
+        coords = await geocodePlace(destination);
+      }
+      if (!coords || cancelled) return;
+      const w = await fetchWeather(coords.lat, coords.lon);
+      if (!cancelled) setWeather(w);
+    })();
+    return () => { cancelled = true; };
+  }, [destination, destLat, destLon]);
 
   // Group by date
   const dateMap = new Map<string, Activity[]>();
@@ -400,6 +409,8 @@ export default function Itinerary({
       time: a.time,
       activity: a.activity,
       address: a.address,
+      lat: a.lat ?? null,
+      lon: a.lon ?? null,
       cost: a.cost,
       notes: a.notes,
       position: a.position,
@@ -431,7 +442,17 @@ export default function Itinerary({
     }
   };
 
-  const grandTotal = activities.reduce((s, a) => s + parseCost(a.cost), 0);
+  // Tối ưu thứ tự các hoạt động trong 1 ngày theo tuyến gần nhau nhất.
+  // Giữ nguyên tập giá trị position của ngày đó → không ảnh hưởng ngày khác.
+  const optimizeDay = async (acts: Activity[]) => {
+    const order = optimizeOrder(acts);
+    const positions = acts.map((a) => a.position).sort((x, y) => x - y);
+    for (let k = 0; k < order.length; k++) {
+      const act = acts[order[k]];
+      if (act.position !== positions[k]) await onUpdate(act.id, { position: positions[k] });
+    }
+  };
+
   const isEditing = editId !== null || addDate !== null;
   const isEmpty = activities.length === 0 && !isEditing;
 
@@ -447,7 +468,7 @@ export default function Itinerary({
             Chưa có hoạt động nào
           </h3>
           <p className="text-slate-400 text-sm mb-8 max-w-xs mx-auto leading-relaxed">
-            Bắt đầu lên kế hoạch từng ngày, địa điểm và chi phí cho chuyến đi
+            Bắt đầu lên kế hoạch từng ngày, từng địa điểm cho chuyến đi
             của bạn.
           </p>
           <button
@@ -465,7 +486,6 @@ export default function Itinerary({
         {sortedDates.map((date, di) => {
           const acts = dateMap.get(date)!;
           const color = PALETTE[di % PALETTE.length];
-          const dayTotal = acts.reduce((s, a) => s + parseCost(a.cost), 0);
           const isAddingHere = addDate === date;
           // Hide the timeline line whenever this day has a form open
           const isDayEditing =
@@ -485,11 +505,28 @@ export default function Itinerary({
                 >
                   {fmtDate(date) || date}
                 </span>
+                {weather[normDate(date)] && (() => {
+                  const w = weather[normDate(date)];
+                  const info = weatherInfo(w.code);
+                  return (
+                    <span
+                      title={info.label}
+                      className="flex items-center gap-1 text-xs font-medium text-slate-500 flex-shrink-0"
+                    >
+                      <span>{info.emoji}</span>
+                      <span>{w.tMax}°<span className="text-slate-300">/{w.tMin}°</span></span>
+                    </span>
+                  );
+                })()}
                 <div className="flex-1 h-px bg-slate-100 min-w-4" />
-                {dayTotal > 0 && (
-                  <span className="text-xs text-slate-400 font-semibold flex-shrink-0">
-                    {fmtMoney(dayTotal)}
-                  </span>
+                {acts.filter((a) => a.lat != null && a.lon != null).length >= 3 && (
+                  <button
+                    onClick={() => void optimizeDay(acts)}
+                    title="Sắp xếp theo tuyến gần nhau nhất"
+                    className="flex items-center gap-1 text-[11px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-full flex-shrink-0 transition-colors"
+                  >
+                    <Shuffle size={12} /> Tối ưu tuyến
+                  </button>
                 )}
               </div>
 
@@ -531,7 +568,7 @@ export default function Itinerary({
                             color={color}
                             onEdit={() => startEdit(act)}
                             onDelete={() => onDelete(act.id)}
-                            onNavigate={() => setMapPlace(act)}
+                            onNavigate={() => openDirections(act)}
                           />
                         </div>
                       </div>
@@ -596,7 +633,7 @@ export default function Itinerary({
                         color={PALETTE[sortedDates.length % PALETTE.length]}
                         onEdit={() => startEdit(act)}
                         onDelete={() => onDelete(act.id)}
-                        onNavigate={() => setMapPlace(act)}
+                        onNavigate={() => openDirections(act)}
                       />
                     </div>
                   </div>
@@ -618,22 +655,6 @@ export default function Itinerary({
           />
         )}
 
-        {/* ── Grand total ── */}
-        {grandTotal > 0 && (
-          <div className="rounded-2xl bg-slate-900 px-5 py-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] text-white/40 font-bold uppercase tracking-widest mb-1">
-                Tổng chi phí ước tính
-              </p>
-              <p className="text-2xl font-bold text-white">
-                {fmtMoney(grandTotal)}
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-              <DollarSign size={18} className="text-white/60" />
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── Floating Add Button (FAB) ── */}
@@ -645,13 +666,6 @@ export default function Itinerary({
         >
           <Plus size={24} />
         </button>
-      )}
-
-      {mapPlace && (
-        <MapView
-          place={{ name: mapPlace.activity || mapPlace.address, address: mapPlace.address }}
-          onClose={() => setMapPlace(null)}
-        />
       )}
     </div>
   );

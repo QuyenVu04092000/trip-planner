@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.quyenvu.tripmemo',
+  appId: 'com.webcashglobal.tripmemo',
   appName: 'TripMemo',
   webDir: 'dist',
   ios: {

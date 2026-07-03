@@ -14,7 +14,7 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getWidgetAuth",      returnType: CAPPluginReturnPromise),
     ]
 
-    private static let appGroup = "group.com.quyenvu04092000.tripmemo"
+    private static let appGroup = "group.com.webcashglobal.tripmemo"
     private static let dataFileName = "widget_data.json"
     private static let configFileName = "widget_config.json"
 
@@ -110,26 +110,29 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         let bgUrlStr = call.getString("backgroundImageUrl")
         print("[Widget] daysLeft: \(data.daysLeft) | fundBalance: \(data.fundBalance) | hasFund: \(data.hasFund) | bgUrl: \(bgUrlStr ?? "(none)")")
 
-        // Download background image; reload again once saved so widget picks up the image
-        if let urlStr = bgUrlStr,
-           let url = URL(string: urlStr),
-           let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup) {
+        // Đồng bộ ảnh nền theo ĐÚNG trip hiện tại.
+        if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup) {
             let fileURL = containerURL.appendingPathComponent("widget_bg.jpg")
-            URLSession.shared.dataTask(with: url) { imageData, response, error in
-                if let error {
-                    print("[Widget] ❌ Image download error: \(error)")
-                } else if let imageData {
-                    do {
-                        try imageData.write(to: fileURL, options: .atomic)
+            let markerURL = containerURL.appendingPathComponent("widget_bg_path.txt")
+            if let urlStr = bgUrlStr, let url = URL(string: urlStr) {
+                URLSession.shared.dataTask(with: url) { imageData, response, _ in
+                    if let imageData, !imageData.isEmpty,
+                       (response as? HTTPURLResponse)?.statusCode == 200 {
+                        try? imageData.write(to: fileURL, options: .atomic)
+                        try? url.path.write(to: markerURL, atomically: true, encoding: .utf8)
                         print("[Widget] ✅ Image saved: \(imageData.count) bytes")
-                    } catch {
-                        print("[Widget] ❌ Image write error: \(error)")
+                    } else {
+                        print("[Widget] ❌ No image data — HTTP: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
                     }
-                } else {
-                    print("[Widget] ❌ No image data — HTTP: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-                }
+                    Self.scheduleReload()
+                }.resume()
+            } else {
+                // Trip mới KHÔNG có ảnh → xoá ảnh cũ để không hiện nhầm ảnh trip trước
+                try? FileManager.default.removeItem(at: fileURL)
+                try? FileManager.default.removeItem(at: markerURL)
+                print("[Widget] 🗑️ No bg for this trip — cleared old image")
                 Self.scheduleReload()
-            }.resume()
+            }
         }
 
         call.resolve()

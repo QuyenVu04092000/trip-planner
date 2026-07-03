@@ -1,12 +1,31 @@
-import { authenticate, json, preflight, SUPABASE_URL } from "../_shared/helpers.ts";
+import { authenticate, json, preflight, serviceClient } from "../_shared/helpers.ts";
+import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
-function buildUrls(storagePath: string, type: string) {
-  const base = `${SUPABASE_URL}/storage/v1`;
-  const publicUrl = `${base}/object/public/trip-media/${storagePath}`;
-  const thumbnailUrl = type === "image"
-    ? `${base}/render/image/public/trip-media/${storagePath}?width=800&quality=75&resize=contain`
-    : publicUrl;
-  return { publicUrl, thumbnailUrl };
+const SIGNED_TTL = 3600; // signed URL sống 1 giờ
+
+// Ký signed URL cho 1 media row (bucket private). Quyền đã được RLS xác nhận trước đó.
+async function signItem(admin: SupabaseClient, r: Record<string, unknown>) {
+  const path = r.storage_path as string;
+  const type = r.type as string;
+  const thumbPath = r.thumbnail_path as string | undefined;
+
+  const sign = async (p: string, transform?: Record<string, unknown>) => {
+    const { data } = await admin.storage
+      .from("trip-media")
+      .createSignedUrl(p, SIGNED_TTL, transform ? { transform } : undefined);
+    return data?.signedUrl ?? null;
+  };
+
+  const publicUrl = path ? await sign(path) : null;
+  let thumbnailUrl: string | null;
+  if (type === "image" && path) {
+    thumbnailUrl = await sign(path, { width: 800, quality: 75, resize: "contain" });
+  } else if (thumbPath) {
+    thumbnailUrl = await sign(thumbPath);
+  } else {
+    thumbnailUrl = publicUrl;
+  }
+  return { ...r, publicUrl, thumbnailUrl };
 }
 
 Deno.serve(async (req) => {
@@ -29,13 +48,12 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: true });
       if (error) return json({ error: error.message }, 400);
 
-      const items = (data ?? []).map((r: Record<string, unknown>) => {
-        const { publicUrl, thumbnailUrl } = buildUrls(
-          r.storage_path as string,
-          r.type as string,
-        );
-        return { ...r, publicUrl, thumbnailUrl };
-      });
+      // RLS đã đảm bảo user chỉ thấy media của trip mình (owner/member).
+      // Ký signed URL bằng service role cho đúng các row đó.
+      const admin = serviceClient();
+      const items = await Promise.all(
+        (data ?? []).map((r: Record<string, unknown>) => signItem(admin, r)),
+      );
       return json(items);
     }
 

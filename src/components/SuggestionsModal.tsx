@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   X, Sparkles, RefreshCw, MapPin, Plus, Check,
-  Utensils, Coffee, Landmark, Camera, List, Map as MapIcon,
+  Utensils, Coffee, Landmark, Camera,
 } from "lucide-react";
 import type { Suggestion, SuggestionCategory } from "../types";
 import { fetchSuggestions } from "../utils/db";
-import SuggestionsMap from "./SuggestionsMap";
-import MapView from "./MapView";
+import { openPlace } from "../utils/maps";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
@@ -40,8 +39,6 @@ export default function SuggestionsModal({ tripId, destination, onAdd, onClose }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
-  const [view, setView] = useState<"list" | "map">("list");
-  const [mapPlace, setMapPlace] = useState<Suggestion | null>(null);
 
   const load = useCallback(async (refresh = false) => {
     setLoading(true);
@@ -76,15 +73,6 @@ export default function SuggestionsModal({ tripId, destination, onAdd, onClose }
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {!loading && items.length > 0 && (
-              <button
-                onClick={() => setView((v) => (v === "list" ? "map" : "list"))}
-                title={view === "list" ? "Xem bản đồ" : "Xem danh sách"}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100"
-              >
-                {view === "list" ? <MapIcon size={15} /> : <List size={15} />}
-              </button>
-            )}
             <button
               onClick={() => load(true)}
               disabled={loading}
@@ -102,19 +90,8 @@ export default function SuggestionsModal({ tripId, destination, onAdd, onClose }
           </div>
         </div>
 
-        {/* Map view */}
-        {!loading && !error && items.length > 0 && view === "map" && (
-          <div className="h-[60vh] w-full">
-            <SuggestionsMap items={items} />
-          </div>
-        )}
-
-        {/* List view */}
-        <div
-          className={`overflow-y-auto px-4 py-3 space-y-2.5 ${
-            view === "map" && !loading && items.length > 0 ? "hidden" : ""
-          }`}
-        >
+        {/* List */}
+        <div className="overflow-y-auto px-4 py-3 space-y-2.5">
           {loading && (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
               <Sparkles size={28} className="animate-pulse text-violet-400" />
@@ -181,7 +158,7 @@ export default function SuggestionsModal({ tripId, destination, onAdd, onClose }
                     {isAdded ? <><Check size={13} /> Đã thêm</> : <><Plus size={13} /> Thêm vào lịch trình</>}
                   </button>
                   <button
-                    onClick={() => setMapPlace(s)}
+                    onClick={() => openPlace(s)}
                     className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
                   >
                     <MapPin size={13} /> Bản đồ
@@ -201,18 +178,6 @@ export default function SuggestionsModal({ tripId, destination, onAdd, onClose }
           </div>
         )}
       </div>
-
-      {mapPlace && (
-        <MapView
-          place={{
-            name: mapPlace.name,
-            address: mapPlace.address,
-            lat: mapPlace.lat,
-            lon: mapPlace.lon,
-          }}
-          onClose={() => setMapPlace(null)}
-        />
-      )}
     </div>
   );
 }

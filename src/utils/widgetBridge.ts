@@ -37,10 +37,27 @@ interface WidgetPayload {
   daysLeft: number;
   status: 'upcoming' | 'ongoing' | 'past';
   todayActivities: string[];
+  // Lịch theo từng ngày (key "yyyy-MM-dd" → ["timeactivity"]) để widget
+  // hiện đúng hoạt động của mỗi ngày khi countdown sang ngày mới mà app không mở.
+  schedule: Record<string, string[]>;
   fundBalance: number;
   totalSpent: number;
   hasFund: boolean;
   backgroundImageUrl?: string;
+}
+
+// Gom hoạt động theo từng ngày → { "yyyy-MM-dd": ["timeactivity", ...] }
+// để widget chọn đúng lịch của mỗi ngày khi countdown sang ngày mới.
+function buildSchedule(activities: Activity[]): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const a of activities) {
+    if (!a.date) continue;
+    (map[a.date] ??= []).push(`${a.time || ''}${a.activity}`);
+  }
+  for (const d of Object.keys(map)) {
+    map[d].sort((x, y) => (x.split('')[0] || '99:99').localeCompare(y.split('')[0] || '99:99'));
+  }
+  return map;
 }
 
 // ── Exports ───────────────────────────────────────────────────────────────────
@@ -83,7 +100,10 @@ export async function updateWidgetFromTrip(params: {
 
   let backgroundImageUrl: string | undefined;
   if (media && media.length > 0) {
-    const item = media[Math.floor(Math.random() * media.length)];
+    // Chọn theo NGÀY (giống edge function widget-data) → app-push & self-fetch
+    // dùng cùng 1 ảnh, đổi 1 lần/ngày, không nhấp nháy.
+    const dayIdx = Math.floor((Date.now() + 7 * 60 * 60 * 1000) / 86_400_000);
+    const item = media[dayIdx % media.length];
     backgroundImageUrl = item.thumbnailUrl ?? item.publicUrl;
   }
 
@@ -101,6 +121,7 @@ export async function updateWidgetFromTrip(params: {
       .filter(a => a.date === todayStr)
       .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'))
       .map(a => `${a.time || ''}\u0001${a.activity}`),
+    schedule: buildSchedule(activities),
     fundBalance,
     totalSpent,
     hasFund,
@@ -292,11 +313,18 @@ export function buildWidgetData(params: {
   }, 0);
   const fundBalance = totalFund - params.expenses.filter(e => e.fundId).reduce((s, e) => s + e.amount, 0);
 
+  const schedule: Record<string, string[]> = {};
+  for (const a of params.activities) {
+    if (!a.date) continue;
+    (schedule[a.date] ??= []).push(`\u0001${a.activity}`);
+  }
+
   return {
     tripId: trip.id, tripName: trip.name, tripEmoji: trip.emoji,
     startDate: trip.startDate, endDate: trip.endDate,
     daysLeft, status,
-    todayActivities: params.activities.filter(a => a.date === todayStr).map(a => a.activity),
+    todayActivities: params.activities.filter(a => a.date === todayStr).map(a => `\u0001${a.activity}`),
+    schedule,
     fundBalance, totalSpent: params.expenses.reduce((s, e) => s + e.amount, 0), hasFund,
   };
 }

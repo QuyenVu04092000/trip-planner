@@ -3,6 +3,8 @@ import { Plus, Trash2, Loader2, Receipt, TrendingUp, TrendingDown, Pencil, Downl
 import type { TripExpense, TripMember, TripFund, TripFundPayment } from '../types';
 import { deleteExpense, createExpense, updateExpense, createFund, deleteFund, toggleFundPayment } from '../utils/db';
 import { exportExpensesToExcel } from '../utils/exportExpenses';
+import { computeSettlement } from '../utils/settleUp';
+import { ArrowRight } from 'lucide-react';
 import AddExpenseModal from './AddExpenseModal';
 import FundModal from './FundModal';
 import FundCard from './FundCard';
@@ -78,6 +80,7 @@ export default function ExpenseTab({
   const [showFundModal, setShowFundModal] = useState(false);
 
   const balances      = calcBalances(expenses, members, funds, fundPayments);
+  const { transfers } = computeSettlement(expenses, members); // cách trả gọn nhất (chi cá nhân)
   const totalSpent    = expenses.reduce((s, e) => s + e.amount, 0);
   const totalFund     = funds.reduce((s, f) => {
     const paidCount = fundPayments.filter(p => p.fundId === f.id && p.paid).length;
@@ -212,6 +215,33 @@ export default function ExpenseTab({
                     {b.net >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
                     {b.net >= 0 ? '+' : '-'}{fmt(b.net)}
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cách trả gọn nhất (settle-up) ─────────────────────────────────── */}
+      {transfers.length > 0 && (
+        <div className="px-4 pt-2">
+          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-slate-50">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                Cách trả gọn nhất ({transfers.length} lần chuyển)
+              </p>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {transfers.map((t, i) => (
+                <div key={i} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                  <span className="font-medium text-slate-700 truncate flex-1 text-right">
+                    {t.fromName}{t.from === currentUserId && <span className="text-slate-400 text-xs ml-1">(bạn)</span>}
+                  </span>
+                  <ArrowRight size={14} className="text-slate-400 flex-shrink-0" />
+                  <span className="font-medium text-slate-700 truncate flex-1">
+                    {t.toName}{t.to === currentUserId && <span className="text-slate-400 text-xs ml-1">(bạn)</span>}
+                  </span>
+                  <span className="font-bold text-blue-600 flex-shrink-0">{fmt(t.amount)}</span>
                 </div>
               ))}
             </div>

@@ -3,7 +3,7 @@ import SwiftUI
 import OSLog
 import ImageIO
 
-private let log = Logger(subsystem: "com.quyenvu.tripmemo.TripWidgetExtension", category: "Widget")
+private let log = Logger(subsystem: "com.webcashglobal.tripmemo.TripWidgetExtension", category: "Widget")
 
 // MARK: - Data model
 
@@ -16,6 +16,7 @@ struct WidgetTripData: Codable, Sendable {
     var daysLeft: Int
     var status: String
     var todayActivities: [String]
+    var schedule: [String: [String]]   // "yyyy-MM-dd" → ["timeactivity"] cho từng ngày
     var fundBalance: Int
     var totalSpent: Int
     var hasFund: Bool
@@ -24,12 +25,14 @@ struct WidgetTripData: Codable, Sendable {
     // Custom decoder so old UserDefaults data (missing new fields) still decodes instead of returning nil
     init(tripId: String, tripName: String, tripEmoji: String, startDate: String?,
          endDate: String?, daysLeft: Int, status: String, todayActivities: [String],
-         fundBalance: Int, totalSpent: Int, hasFund: Bool, backgroundImageUrl: String? = nil) {
+         fundBalance: Int, totalSpent: Int, hasFund: Bool, backgroundImageUrl: String? = nil,
+         schedule: [String: [String]] = [:]) {
         self.tripId = tripId; self.tripName = tripName; self.tripEmoji = tripEmoji
         self.startDate = startDate; self.endDate = endDate; self.daysLeft = daysLeft
         self.status = status; self.todayActivities = todayActivities
         self.fundBalance = fundBalance; self.totalSpent = totalSpent; self.hasFund = hasFund
         self.backgroundImageUrl = backgroundImageUrl
+        self.schedule = schedule
     }
 
     init(from decoder: Decoder) throws {
@@ -42,6 +45,7 @@ struct WidgetTripData: Codable, Sendable {
         daysLeft        = (try? c.decode(Int.self,      forKey: .daysLeft))        ?? 0
         status          = (try? c.decode(String.self,   forKey: .status))          ?? "upcoming"
         todayActivities = (try? c.decode([String].self, forKey: .todayActivities)) ?? []
+        schedule        = (try? c.decode([String: [String]].self, forKey: .schedule)) ?? [:]
         fundBalance     = (try? c.decode(Int.self,      forKey: .fundBalance))     ?? 0
         totalSpent      = (try? c.decode(Int.self,      forKey: .totalSpent))      ?? 0
         hasFund         = (try? c.decode(Bool.self,     forKey: .hasFund))         ?? false
@@ -102,7 +106,7 @@ struct WidgetConfigFile: Codable {
 }
 
 struct TripWidgetProvider: TimelineProvider {
-    static let appGroupID  = "group.com.quyenvu04092000.tripmemo"
+    static let appGroupID  = "group.com.webcashglobal.tripmemo"
     static let dataFileName = "widget_data.json"
     static let configFileName = "widget_config.json"
 
@@ -255,17 +259,38 @@ struct TripWidgetProvider: TimelineProvider {
         }
     }
 
-    // Downloads (or clears) the rotating background photo into the App Group.
-    private static func syncBackgroundImage(_ urlStr: String?) async {
-        guard let fileURL = containerURL()?.appendingPathComponent("widget_bg.jpg") else { return }
+    // Tải (hoặc xoá) ảnh nền vào App Group. Trả về TRUE nếu ảnh đổi (để reload).
+    // Dedup theo PATH của ảnh (bỏ query token — signed URL đổi token mỗi lần) →
+    // cùng 1 ảnh thì không tải lại; ảnh của trip khác thì tải mới.
+    @discardableResult
+    private static func syncBackgroundImage(_ urlStr: String?) async -> Bool {
+        guard let container = containerURL() else { return false }
+        let fileURL = container.appendingPathComponent("widget_bg.jpg")
+        let pathMarkerURL = container.appendingPathComponent("widget_bg_path.txt")
+        let currentPath = try? String(contentsOf: pathMarkerURL, encoding: .utf8)
+
+        // Không có ảnh → xoá để về gradient
         guard let urlStr, let url = URL(string: urlStr) else {
-            try? FileManager.default.removeItem(at: fileURL) // no media → fall back to gradient
-            return
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try? FileManager.default.removeItem(at: fileURL)
+                try? FileManager.default.removeItem(at: pathMarkerURL)
+                return true
+            }
+            return false
         }
+
+        // Cùng ảnh (path giống, file đã có) → khỏi tải lại
+        if currentPath == url.path, FileManager.default.fileExists(atPath: fileURL.path) {
+            return false
+        }
+
         if let (data, resp) = try? await URLSession.shared.data(from: url),
            (resp as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty {
             try? data.write(to: fileURL, options: .atomic)
+            try? url.path.write(to: pathMarkerURL, atomically: true, encoding: .utf8)
+            return true
         }
+        return false
     }
 
     // ── TimelineProvider ─────────────────────────────────────────────────────
@@ -354,6 +379,12 @@ struct TripWidgetProvider: TimelineProvider {
         // so the new data shows. The diff check prevents an infinite reload loop.
         let before = cached.flatMap { try? JSONEncoder().encode($0) }
         Task.detached {
+            // Đồng bộ ảnh nền theo trip ĐANG hiển thị (app vừa đẩy) TRƯỚC — tránh
+            // dùng nhầm ảnh của trip cũ khi getTimeline chỉ đọc cache.
+            if await Self.syncBackgroundImage(cached?.trip?.backgroundImageUrl),
+               #available(iOS 14.0, *) {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
             guard let fresh = await WidgetDataLoader.shared.load({ await Self.fetchRemotePayload() }) else { return }
             let after = try? JSONEncoder().encode(fresh)
             if before != after, #available(iOS 14.0, *) {
@@ -367,6 +398,16 @@ struct TripWidgetProvider: TimelineProvider {
     private static func refreshed(_ data: WidgetTripData, at refDate: Date, dayOffset: Int = 0) -> WidgetTripData {
         let calendar = Calendar.current
         var out = data
+
+        // Chọn lịch của ĐÚNG ngày entry này, để khi countdown sang ngày mới mà app
+        // không mở, widget vẫn hiện hoạt động của ngày tương ứng. Nếu payload cũ
+        // (chưa có schedule) thì giữ nguyên todayActivities tĩnh.
+        if !data.schedule.isEmpty {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            f.locale = Locale(identifier: "en_US_POSIX")
+            out.todayActivities = data.schedule[f.string(from: refDate)] ?? []
+        }
 
         if let startStr = data.startDate, let endStr = data.endDate,
            let start = localDate(from: startStr) {

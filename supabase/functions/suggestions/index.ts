@@ -3,7 +3,8 @@ import { authenticate, json, preflight } from "../_shared/helpers.ts";
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 const MAPBOX_TOKEN = Deno.env.get("MAPBOX_TOKEN")!;
 const GEMINI_MODEL = "gemini-2.5-flash";
-const CACHE_ENABLED = false; // đổi true để bật lại cache
+const CACHE_ENABLED = true; // cache theo (trip, user), TTL 7 ngày — đỡ gọi Gemini lặp lại
+const DAILY_AI_LIMIT = 20;  // tối đa 20 lần sinh gợi ý/user/ngày
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày
 
 interface RawSuggestion {
@@ -194,6 +195,12 @@ Deno.serve(async (req) => {
           if (age < CACHE_MAX_AGE_MS) return json(cached.data);
         }
       } catch (_) { /* bảng chưa tồn tại — bỏ qua cache */ }
+    }
+
+    // 1b. Rate-limit: tối đa N lần gọi AI/ngày (chỉ tính khi cache miss → gọi Gemini thật)
+    const { data: underQuota } = await sb.rpc("check_ai_quota", { p_limit: DAILY_AI_LIMIT });
+    if (underQuota === false) {
+      return json({ error: "Đã đạt giới hạn gợi ý hôm nay. Thử lại vào ngày mai nhé." }, 429);
     }
 
     // 2. Gemini sinh danh sách

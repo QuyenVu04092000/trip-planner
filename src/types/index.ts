@@ -2,6 +2,8 @@ export interface Trip {
   id: string;
   name: string;
   destination: string;
+  lat?: number | null;   // toạ độ điểm đến (chọn từ bản đồ) — cho thời tiết & tính năng cần vị trí
+  lon?: number | null;
   startDate: string;
   endDate: string;
   coverColor: string;
@@ -17,6 +19,8 @@ export interface Activity {
   time: string;
   activity: string;
   address: string;
+  lat?: number | null;   // toạ độ địa điểm (từ ô tìm kiếm) — để bản đồ/chỉ đường chính xác
+  lon?: number | null;
   cost: string;
   notes: string;
   position: number;

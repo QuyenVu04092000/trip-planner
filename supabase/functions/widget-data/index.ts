@@ -13,6 +13,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Ho_Chi_Minh (UTC+7)
 
@@ -29,17 +30,23 @@ function daysBetween(fromStr: string, toStr: string): number {
   return Math.round((to - from) / 86_400_000);
 }
 
-// Stable image URL for a media row (image → transformed thumbnail, video → thumbnail object).
-function mediaBackgroundUrl(
+// Signed URL ảnh nền cho widget (bucket private). TTL dài để không gãy giữa các
+// lần widget refresh. Ký bằng service role.
+async function mediaBackgroundUrl(
+  admin: ReturnType<typeof createClient>,
   row: { storage_path?: string; thumbnail_path?: string; type?: string } | undefined,
-): string | undefined {
+): Promise<string | undefined> {
   if (!row) return undefined;
-  const base = `${SUPABASE_URL}/storage/v1`;
+  const TTL = 24 * 60 * 60; // 24h
   if (row.type === "video" && row.thumbnail_path) {
-    return `${base}/object/public/trip-media/${row.thumbnail_path}`;
+    const { data } = await admin.storage.from("trip-media").createSignedUrl(row.thumbnail_path, TTL);
+    return data?.signedUrl ?? undefined;
   }
   if (row.storage_path) {
-    return `${base}/render/image/public/trip-media/${row.storage_path}?width=800&quality=70&resize=contain`;
+    const { data } = await admin.storage.from("trip-media").createSignedUrl(row.storage_path, TTL, {
+      transform: { width: 800, quality: 70, resize: "contain" },
+    });
+    return data?.signedUrl ?? undefined;
   }
   return undefined;
 }
@@ -119,7 +126,7 @@ Deno.serve(async (req) => {
         .from("activities")
         .select("activity, date, time, position")
         .eq("trip_id", tripId)
-        .eq("date", today)
+        .order("date")
         .order("position")
         .order("time"),
       supabase
@@ -148,14 +155,26 @@ Deno.serve(async (req) => {
       0,
     );
 
-    // Encode each entry as "time\u0001name" (time may be empty). The widget splits
-    // on \u0001 so it can render the time separately. Sorted by time, untimed last.
-    const todayActivities = (activities.data ?? [])
-      .filter((a: { activity?: string }) => a.activity)
-      .sort((a: { time?: string }, b: { time?: string }) =>
-        (a.time || "99:99").localeCompare(b.time || "99:99")
-      )
-      .map((a: { activity: string; time?: string }) => `${a.time || ""}\u0001${a.activity}`);
+    // Gom hoạt động theo TỪNG NGÀY → schedule["yyyy-MM-dd"] = ["time\u0001name"].
+    // Widget dùng map này để hiện đúng lịch mỗi ngày khi countdown sang ngày mới
+    // mà app không mở. Mỗi entry mã hoá "time\u0001name" (widget tách trên \u0001).
+    const schedule: Record<string, string[]> = {};
+    for (
+      const a of (activities.data ?? []) as {
+        activity?: string;
+        date?: string;
+        time?: string;
+      }[]
+    ) {
+      if (!a.activity || !a.date) continue;
+      (schedule[a.date] ??= []).push(`${a.time || ""}\u0001${a.activity}`);
+    }
+    for (const d of Object.keys(schedule)) {
+      schedule[d].sort((x, y) =>
+        (x.split("\u0001")[0] || "99:99").localeCompare(y.split("\u0001")[0] || "99:99")
+      );
+    }
+    const todayActivities = schedule[today] ?? [];
 
     // Deterministic daily rotation so the bg only changes once per day (not every refresh).
     let backgroundImageUrl: string | undefined;
@@ -164,7 +183,10 @@ Deno.serve(async (req) => {
       const dayOfYear = Math.floor(
         (Date.now() + VN_OFFSET_MS) / 86_400_000,
       );
-      backgroundImageUrl = mediaBackgroundUrl(mediaRows[dayOfYear % mediaRows.length]);
+      const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      backgroundImageUrl = await mediaBackgroundUrl(admin, mediaRows[dayOfYear % mediaRows.length]);
     }
 
     // ── 4. Countdown + status ────────────────────────────────────────────────
@@ -184,6 +206,7 @@ Deno.serve(async (req) => {
         daysLeft,
         status,
         todayActivities,
+        schedule,
         fundBalance,
         totalSpent,
         hasFund,

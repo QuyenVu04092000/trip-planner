@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { Trip, AppPage } from "./types";
 import { fetchTrips, createTrip, deleteTrip } from "./utils/db";
@@ -59,6 +59,8 @@ export default function App() {
   const [page, setPageState] = useState<AppPage>(
     () => pageFromHash(window.location.hash) ?? { page: "list" },
   );
+  // Chống refetch lặp vô hạn khi mở 1 tripId không tồn tại (vd widget của trip đã xoá)
+  const triedTripFetch = useRef<string | null>(null);
 
   // Keep hash in sync whenever page changes
   const setPage = useCallback((next: AppPage) => {
@@ -155,7 +157,12 @@ export default function App() {
 
   const handleDeleteTrip = useCallback(async (tripId: string) => {
     await deleteTrip(tripId);
-    setTrips((prev) => prev.filter((t) => t.id !== tripId));
+    setTrips((prev) => {
+      const next = prev.filter((t) => t.id !== tripId);
+      // Đẩy trip gần nhất kế tiếp lên widget NGAY (nếu xoá trúng trip đang hiển thị)
+      void syncNearestTripToWidget(next);
+      return next;
+    });
   }, []);
 
   const handleRefresh = useCallback(async () => {
@@ -256,9 +263,17 @@ export default function App() {
         />
       );
     }
-    // Trip not in state yet (e.g. just joined via invite) — refetch once
-    if (!loading) {
-      fetchTrips().then(setTrips).catch(console.error);
+    // Không thấy trip trong state → thử refetch 1 LẦN cho mỗi tripId.
+    // Nếu sau refetch vẫn không có (vd trip đã bị xoá, mở từ widget cũ) → về danh
+    // sách thay vì kẹt màn "Đang tải" vĩnh viễn.
+    if (!loading && triedTripFetch.current !== page.tripId) {
+      triedTripFetch.current = page.tripId;
+      fetchTrips()
+        .then((data) => {
+          setTrips(data);
+          if (!data.some((t) => t.id === page.tripId)) setPage({ page: "list" });
+        })
+        .catch(() => setPage({ page: "list" }));
     }
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">

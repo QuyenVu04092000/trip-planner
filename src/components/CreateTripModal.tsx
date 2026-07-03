@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, MapPin } from 'lucide-react';
 import type { Trip } from '../types';
 import DatePicker from './DatePicker';
+import PlacesAutocomplete from './PlacesAutocomplete';
 
 const COVER_COLORS = [
   'from-blue-400 to-indigo-600',
@@ -28,6 +29,8 @@ export default function CreateTripModal({ onClose, onSave, initialTrip }: Props)
   const isEdit = !!initialTrip;
   const [name,        setName]        = useState(initialTrip?.name        ?? '');
   const [destination, setDestination] = useState(initialTrip?.destination ?? '');
+  const [lat,         setLat]         = useState<number | null>(initialTrip?.lat ?? null);
+  const [lon,         setLon]         = useState<number | null>(initialTrip?.lon ?? null);
   const [startDate,   setStartDate]   = useState(initialTrip?.startDate   ?? '');
   const [endDate,     setEndDate]     = useState(initialTrip?.endDate     ?? '');
   const [coverColor,  setCoverColor]  = useState(initialTrip?.coverColor  ?? COVER_COLORS[0]);
@@ -36,7 +39,7 @@ export default function CreateTripModal({ onClose, onSave, initialTrip }: Props)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    onSave({ name: name.trim(), destination: destination.trim(), startDate, endDate, coverColor, emoji });
+    onSave({ name: name.trim(), destination: destination.trim(), lat, lon, startDate, endDate, coverColor, emoji });
   };
 
   return (
@@ -87,14 +90,17 @@ export default function CreateTripModal({ onClose, onSave, initialTrip }: Props)
             />
           </div>
 
-          {/* Destination */}
+          {/* Destination — chọn từ bản đồ để lưu toạ độ (cho thời tiết) */}
           <div>
             <label className={lbl}>Điểm đến</label>
-            <input
-              type="text"
+            <PlacesAutocomplete
               value={destination}
-              onChange={e => setDestination(e.target.value)}
-              placeholder="Ví dụ: Đà Nẵng, Việt Nam"
+              onChange={(v, coords) => {
+                setDestination(v);
+                setLat(coords?.lat ?? null);
+                setLon(coords?.lon ?? null);
+              }}
+              placeholder="Chọn điểm đến trên bản đồ..."
               className={inp}
             />
           </div>

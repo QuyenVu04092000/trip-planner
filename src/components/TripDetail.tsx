@@ -161,6 +161,36 @@ export default function TripDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip.id]);
 
+  // ── Cộng tác real-time ──────────────────────────────────────────────────────
+  // Ai đó (thành viên khác) sửa hoạt động/chi tiêu/quỹ → tự refetch & cập nhật.
+  useEffect(() => {
+    const tid = trip.id;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const refetch = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void fetchActivities(tid).then(setActivities).catch(() => {});
+        void fetchExpenses(tid).then(setExpenses).catch(() => {});
+        void fetchFunds(tid).then(setFunds).catch(() => {});
+        void fetchFundPayments(tid).then(setFundPayments).catch(() => {});
+      }, 600); // gộp nhiều thay đổi liên tiếp
+    };
+
+    const filter = `trip_id=eq.${tid}`;
+    const channel = supabase
+      .channel(`trip_${tid}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "activities", filter }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "trip_expenses", filter }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "trip_funds", filter }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "trip_fund_payments", filter }, refetch)
+      .subscribe();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [trip.id]);
+
   // Realtime widget sync — fires whenever any relevant data changes after initial load
   useEffect(() => {
     console.log(
@@ -485,6 +515,9 @@ export default function TripDetail({
               <Itinerary
                 activities={activities}
                 startDate={trip.startDate}
+                destination={trip.destination}
+                destLat={trip.lat}
+                destLon={trip.lon}
                 onAdd={handleAdd}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}

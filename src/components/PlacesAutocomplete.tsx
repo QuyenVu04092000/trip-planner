@@ -4,7 +4,7 @@ import MapPicker from './MapPicker';
 
 interface Props {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, coords?: { lat: number; lon: number }) => void;
   placeholder?: string;
   className?: string;
 }
@@ -12,8 +12,8 @@ interface Props {
 export default function PlacesAutocomplete({ value, onChange, placeholder, className }: Props) {
   const [mapOpen, setMapOpen] = useState(false);
 
-  function handleSelect(address: string) {
-    onChange(address);
+  function handleSelect(address: string, lat?: number, lon?: number) {
+    onChange(address, lat != null && lon != null ? { lat, lon } : undefined);
     setMapOpen(false);
   }
 
