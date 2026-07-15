@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { AppLauncher } from '@capacitor/app-launcher';
 
 // Mở Google Maps bằng deep-link (KHÔNG cần API key). Ưu tiên toạ độ lat/lon để
 // trỏ đúng vị trí; không có thì dùng địa chỉ/tên. Google Maps tự lấy vị trí hiện
@@ -12,8 +13,16 @@ interface Place {
 }
 
 function openExternal(url: string): void {
-  // Native: mở app ngoài (Google Maps/Safari); Web: tab mới
-  window.open(url, Capacitor.isNativePlatform() ? '_system' : '_blank');
+  if (Capacitor.isNativePlatform()) {
+    // AppLauncher → UIApplication.open: iOS route universal link sang app
+    // Google Maps (nếu cài) hoặc Safari. window.open('_system') là quy ước
+    // Cordova, không đảm bảo trong WKWebView.
+    void AppLauncher.openUrl({ url }).catch(() => {
+      window.open(url, '_blank');
+    });
+    return;
+  }
+  window.open(url, '_blank');
 }
 
 // Chỉ đường từ vị trí hiện tại → địa điểm

@@ -60,7 +60,7 @@ function calcBalances(
 }
 
 function avatarColor(email: string) {
-  const colors = ['bg-blue-400', 'bg-violet-400', 'bg-pink-400', 'bg-amber-400', 'bg-emerald-400', 'bg-cyan-400'];
+  const colors = ['bg-terra', 'bg-plum', 'bg-clay', 'bg-gold', 'bg-moss', 'bg-slateblue'];
   let hash = 0;
   for (const c of email) hash = (hash * 31 + c.charCodeAt(0)) & 0xfffff;
   return colors[hash % colors.length];
@@ -145,17 +145,17 @@ export default function ExpenseTab({
       {/* ── Thu quỹ ──────────────────────────────────────────────────────── */}
       <div className="px-4 pt-4 pb-2 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Thu quỹ</p>
+          <p className="text-xs font-semibold text-stone uppercase tracking-wide">Thu quỹ</p>
           <button
             onClick={() => setShowFundModal(true)}
-            className="flex items-center gap-1 text-xs font-semibold text-amber-600 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 transition-colors"
+            className="flex items-center gap-1 text-xs font-semibold text-gold-dark px-2.5 py-1 rounded-lg bg-gold-pale hover:bg-gold-pale transition-colors"
           >
             <PiggyBank size={12} /> Tạo quỹ
           </button>
         </div>
 
         {!hasFunds ? (
-          <div className="text-center py-6 text-slate-400 text-xs bg-white rounded-2xl border border-dashed border-slate-200">
+          <div className="text-center py-6 text-stone text-xs bg-white rounded-2xl border border-dashed border-sand">
             Nhấn "Tạo quỹ" để thu tiền trước khi đi
           </div>
         ) : (
@@ -178,14 +178,14 @@ export default function ExpenseTab({
       {/* ── Balance overview ──────────────────────────────────────────────── */}
       {(hasExpenses || hasFunds) && (
         <div className="px-4 pt-2 pb-2">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Tổng quan</span>
+          <div className="bg-white rounded-2xl border border-sand shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-sand/40 flex items-center justify-between">
+              <span className="text-xs font-semibold text-stone uppercase tracking-wide">Tổng quan</span>
               <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <p className="text-sm font-bold text-slate-700">Chi: {fmt(totalSpent)}</p>
+                  <p className="text-sm font-bold text-ink">Chi: {fmt(totalSpent)}</p>
                   {totalFund > 0 && (
-                    <p className={`text-[10px] font-semibold ${fundRemaining >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <p className={`text-[10px] font-semibold ${fundRemaining >= 0 ? 'text-sage-dark' : 'text-wine'}`}>
                       Quỹ còn: {fundRemaining >= 0 ? '' : '−'}{fmt(fundRemaining)}
                       {fundRemaining < 0 && ' ⚠️'}
                     </p>
@@ -194,24 +194,24 @@ export default function ExpenseTab({
                 {hasExpenses && (
                   <button
                     onClick={() => exportExpensesToExcel(tripName, expenses, members)}
-                    className="flex items-center gap-1 text-xs font-medium text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                    className="flex items-center gap-1 text-xs font-medium text-terra-dark px-2 py-1 rounded-lg hover:bg-terra-pale transition-colors"
                   >
                     <Download size={12} /> Excel
                   </button>
                 )}
               </div>
             </div>
-            <div className="divide-y divide-slate-50">
+            <div className="divide-y divide-sand/40">
               {balances.map(b => (
                 <div key={b.userId} className="flex items-center gap-3 px-4 py-2.5">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${avatarColor(b.email)}`}>
                     {b.displayName.slice(0, 2).toUpperCase()}
                   </div>
-                  <span className="flex-1 text-sm text-slate-700 truncate">
+                  <span className="flex-1 text-sm text-ink truncate">
                     {b.displayName}
-                    {b.userId === currentUserId && <span className="text-slate-400 text-xs ml-1">(bạn)</span>}
+                    {b.userId === currentUserId && <span className="text-stone text-xs ml-1">(bạn)</span>}
                   </span>
-                  <div className={`flex items-center gap-1 text-sm font-semibold ${b.net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  <div className={`flex items-center gap-1 text-sm font-semibold ${b.net >= 0 ? 'text-sage-dark' : 'text-wine'}`}>
                     {b.net >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
                     {b.net >= 0 ? '+' : '-'}{fmt(b.net)}
                   </div>
@@ -225,23 +225,23 @@ export default function ExpenseTab({
       {/* ── Cách trả gọn nhất (settle-up) ─────────────────────────────────── */}
       {transfers.length > 0 && (
         <div className="px-4 pt-2">
-          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-slate-50">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+          <div className="bg-white rounded-2xl border border-sand overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-sand/40">
+              <p className="text-xs font-semibold text-stone uppercase tracking-wide">
                 Cách trả gọn nhất ({transfers.length} lần chuyển)
               </p>
             </div>
-            <div className="divide-y divide-slate-50">
+            <div className="divide-y divide-sand/40">
               {transfers.map((t, i) => (
                 <div key={i} className="flex items-center gap-2 px-4 py-2.5 text-sm">
-                  <span className="font-medium text-slate-700 truncate flex-1 text-right">
-                    {t.fromName}{t.from === currentUserId && <span className="text-slate-400 text-xs ml-1">(bạn)</span>}
+                  <span className="font-medium text-ink truncate flex-1 text-right">
+                    {t.fromName}{t.from === currentUserId && <span className="text-stone text-xs ml-1">(bạn)</span>}
                   </span>
-                  <ArrowRight size={14} className="text-slate-400 flex-shrink-0" />
-                  <span className="font-medium text-slate-700 truncate flex-1">
-                    {t.toName}{t.to === currentUserId && <span className="text-slate-400 text-xs ml-1">(bạn)</span>}
+                  <ArrowRight size={14} className="text-stone flex-shrink-0" />
+                  <span className="font-medium text-ink truncate flex-1">
+                    {t.toName}{t.to === currentUserId && <span className="text-stone text-xs ml-1">(bạn)</span>}
                   </span>
-                  <span className="font-bold text-blue-600 flex-shrink-0">{fmt(t.amount)}</span>
+                  <span className="font-bold text-terra-dark flex-shrink-0">{fmt(t.amount)}</span>
                 </div>
               ))}
             </div>
@@ -251,38 +251,38 @@ export default function ExpenseTab({
 
       {/* ── Chi tiêu list ─────────────────────────────────────────────────── */}
       <div className="px-4 pt-2 space-y-2">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+        <p className="text-xs font-semibold text-stone uppercase tracking-wide">
           Chi tiêu{hasExpenses ? ` (${expenses.length} khoản)` : ''}
         </p>
 
         {!hasExpenses ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center bg-white rounded-2xl border border-dashed border-slate-200">
+          <div className="flex flex-col items-center justify-center py-10 text-center bg-white rounded-2xl border border-dashed border-sand">
             <div className="text-3xl mb-2">💸</div>
-            <p className="text-slate-500 font-medium text-sm">Chưa có khoản chi tiêu nào</p>
-            <p className="text-slate-400 text-xs mt-1">Nhấn + để thêm chi tiêu chung</p>
+            <p className="text-stone font-medium text-sm">Chưa có khoản chi tiêu nào</p>
+            <p className="text-stone text-xs mt-1">Nhấn + để thêm chi tiêu chung</p>
           </div>
         ) : (
           expenses.map(exp => {
             const canDelete = true;
             return (
-              <div key={exp.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-3">
+              <div key={exp.id} className="bg-white rounded-2xl border border-sand shadow-sm px-4 py-3">
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Receipt size={15} className="text-blue-500" />
+                  <div className="w-9 h-9 rounded-xl bg-terra-pale flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Receipt size={15} className="text-terra" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{exp.description}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <p className="text-sm font-semibold text-ink truncate">{exp.description}</p>
+                    <p className="text-xs text-stone mt-0.5">
                       {exp.fundId ? '💰 Từ quỹ · ' : ''}{members.find(m => m.userId === exp.paidBy)?.displayName ?? exp.paidByEmail.split('@')[0]} trả · {exp.splits.length} người
                     </p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <span className="text-sm font-bold text-slate-700">
+                    <span className="text-sm font-bold text-ink">
                       {exp.amount.toLocaleString('vi-VN')}đ
                     </span>
                     <button
                       onClick={() => setEditExpense(exp)}
-                      className="p-1.5 text-slate-300 hover:text-blue-400 transition-colors"
+                      className="p-1.5 text-dune hover:text-terra transition-colors"
                     >
                       <Pencil size={13} />
                     </button>
@@ -290,7 +290,7 @@ export default function ExpenseTab({
                       <button
                         onClick={() => handleDelete(exp.id)}
                         disabled={deletingId === exp.id}
-                        className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                        className="p-1.5 text-dune hover:text-wine transition-colors"
                       >
                         {deletingId === exp.id
                           ? <Loader2 size={13} className="animate-spin" />
@@ -309,7 +309,7 @@ export default function ExpenseTab({
       {/* FAB */}
       <button
         onClick={() => setShowAdd(true)}
-        className="fixed bottom-6 right-6 z-20 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center transition-colors active:scale-95"
+        className="fixed bottom-6 right-6 z-20 w-14 h-14 bg-terra hover:bg-terra-dark text-white rounded-full shadow-lg flex items-center justify-center transition-colors active:scale-95"
       >
         <Plus size={22} />
       </button>

@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 import OSLog
 import ImageIO
 
@@ -22,7 +23,7 @@ struct WidgetTripData: Codable, Sendable {
     var hasFund: Bool
     var backgroundImageUrl: String?
 
-    // Custom decoder so old UserDefaults data (missing new fields) still decodes instead of returning nil
+    // Custom decoder so old data (missing new fields) still decodes instead of returning nil
     init(tripId: String, tripName: String, tripEmoji: String, startDate: String?,
          endDate: String?, daysLeft: Int, status: String, todayActivities: [String],
          fundBalance: Int, totalSpent: Int, hasFund: Bool, backgroundImageUrl: String? = nil,
@@ -53,12 +54,13 @@ struct WidgetTripData: Codable, Sendable {
     }
 }
 
-// MARK: - Timeline entry & provider
+// MARK: - Timeline entry
 
 struct TripWidgetEntry: TimelineEntry {
     let date: Date
-    let data: WidgetTripData
+    let data: WidgetTripData?   // nil = chưa chọn trip / trip đã xoá
     let isLoggedIn: Bool
+    let tripId: String?         // id trip đang cấu hình (để nạp ảnh nền theo trip)
 }
 
 struct WidgetPayloadFile: Codable, Sendable {
@@ -66,38 +68,23 @@ struct WidgetPayloadFile: Codable, Sendable {
     var trip: WidgetTripData?
 }
 
-// Coalesces concurrent timeline fetches across widget families. Without this,
-// the small + medium widgets reload together and BOTH try to refresh the access
-// token with the same (rotating) refresh token — the second one fails and shows
-// no data. Here only one network fetch + token refresh runs; both families share
-// the result.
+// Gộp các lần fetch ĐỒNG THỜI cho CÙNG một trip (small + medium reload cùng lúc) để
+// không double token-refresh. Khác trip thì fetch riêng (key theo tripId).
 actor WidgetDataLoader {
     static let shared = WidgetDataLoader()
+    private var inFlight: [String: Task<WidgetPayloadFile?, Never>] = [:]
 
-    private var inFlight: Task<WidgetPayloadFile?, Never>?
-
-    func load(_ fetch: @Sendable @escaping () async -> WidgetPayloadFile?) async -> WidgetPayloadFile? {
-        // Only coalesce genuinely CONCURRENT fetches: the small + medium families
-        // reload within the same instant, so the second one awaits the first's
-        // task instead of racing a parallel token refresh.
-        //
-        // We deliberately do NOT cache the result for a time window. A previous
-        // 20s cache made edits feel laggy: a reload triggered right after the user
-        // changed a trip returned the stale cached payload instead of re-fetching,
-        // so the change only appeared up to ~20s later.
-        if let inFlight {
-            return await inFlight.value
-        }
+    func load(key: String, _ fetch: @Sendable @escaping () async -> WidgetPayloadFile?) async -> WidgetPayloadFile? {
+        if let t = inFlight[key] { return await t.value }
         let task = Task { await fetch() }
-        inFlight = task
+        inFlight[key] = task
         let result = await task.value
-        inFlight = nil
+        inFlight[key] = nil
         return result
     }
 }
 
 // Shared session store written by the main app (see WidgetBridgePlugin.swift).
-// The widget reads it to call the `widget-data` edge function on its own.
 struct WidgetConfigFile: Codable {
     var supabaseUrl: String
     var anonKey: String
@@ -105,33 +92,29 @@ struct WidgetConfigFile: Codable {
     var refreshToken: String
 }
 
-struct TripWidgetProvider: TimelineProvider {
-    static let appGroupID  = "group.com.webcashglobal.tripmemo"
-    static let dataFileName = "widget_data.json"
-    static let configFileName = "widget_config.json"
+// MARK: - Provider (App Intent — widget cấu hình chọn trip)
 
-    // How often the widget tries to pull fresh data from Supabase. iOS ultimately
-    // controls the budget, but this is the requested cadence.
+struct TripWidgetProvider: AppIntentTimelineProvider {
+    typealias Entry = TripWidgetEntry
+    typealias Intent = SelectTripIntent
+
+    static let appGroupID = "group.com.webcashglobal.tripmemo"
+    static let configFileName = "widget_config.json"
     static let refreshInterval: TimeInterval = 45 * 60
 
     private static func containerURL() -> URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
     }
 
-    // ── Local cache (last known good payload) ────────────────────────────────
-
-    private static func loadPayload() -> WidgetPayloadFile? {
-        guard let container = containerURL() else {
-            log.error("❌ App Group container nil — entitlement chưa được cấp cho extension")
-            return nil
-        }
-        let url = container.appendingPathComponent(dataFileName)
-        guard let raw = try? Data(contentsOf: url) else { return nil }
+    // ── Local cache theo TỪNG trip ───────────────────────────────────────────
+    private static func loadPayload(_ tripId: String) -> WidgetPayloadFile? {
+        guard let url = containerURL()?.appendingPathComponent("widget_data_\(tripId).json"),
+              let raw = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(WidgetPayloadFile.self, from: raw)
     }
 
-    private static func savePayload(_ payload: WidgetPayloadFile) {
-        guard let url = containerURL()?.appendingPathComponent(dataFileName),
+    private static func savePayload(_ payload: WidgetPayloadFile, tripId: String) {
+        guard let url = containerURL()?.appendingPathComponent("widget_data_\(tripId).json"),
               let encoded = try? JSONEncoder().encode(payload) else { return }
         try? encoded.write(to: url, options: .atomic)
     }
@@ -142,7 +125,6 @@ struct TripWidgetProvider: TimelineProvider {
     }
 
     // ── Shared session config ────────────────────────────────────────────────
-
     private static func loadConfig() -> WidgetConfigFile? {
         guard let url = containerURL()?.appendingPathComponent(configFileName),
               let raw = try? Data(contentsOf: url) else { return nil }
@@ -155,51 +137,45 @@ struct TripWidgetProvider: TimelineProvider {
         try? encoded.write(to: url, options: .atomic)
     }
 
-    // ── Remote fetch (self-updating, no app launch needed) ───────────────────
+    private static func hasAuthConfig() -> Bool { loadConfig() != nil }
 
+    // ── Remote fetch theo tripId ─────────────────────────────────────────────
     private enum FetchResult {
         case success(WidgetPayloadFile)
         case unauthorized
         case failure
     }
 
-    // Calls the edge function; refreshes the access token once on 401 and retries.
-    private static func fetchRemotePayload() async -> WidgetPayloadFile? {
+    private static func fetchRemotePayload(tripId: String) async -> WidgetPayloadFile? {
         guard let cfg = loadConfig() else {
             writeEcho("no_config")
             return nil
         }
-
-        switch await requestWidgetData(cfg) {
+        switch await requestWidgetData(cfg, tripId: tripId) {
         case .success(let payload):
-            await finalize(payload)
+            await finalize(payload, tripId: tripId)
             return payload
         case .failure:
             writeEcho("network_error")
             return nil
         case .unauthorized:
-            // A sibling widget family may have already rotated + saved a fresh
-            // token. Prefer that over rotating again (which would fail, since the
-            // refresh token is single-use).
             if let diskCfg = loadConfig(), diskCfg.accessToken != cfg.accessToken,
-               case .success(let payload) = await requestWidgetData(diskCfg) {
-                await finalize(payload)
+               case .success(let payload) = await requestWidgetData(diskCfg, tripId: tripId) {
+                await finalize(payload, tripId: tripId)
                 return payload
             }
             guard let newCfg = await refreshSession(cfg) else {
-                // Refresh failed — a sibling likely won the rotation race. Adopt
-                // whatever token is on disk now and try once more.
                 if let diskCfg = loadConfig(), diskCfg.accessToken != cfg.accessToken,
-                   case .success(let payload) = await requestWidgetData(diskCfg) {
-                    await finalize(payload)
+                   case .success(let payload) = await requestWidgetData(diskCfg, tripId: tripId) {
+                    await finalize(payload, tripId: tripId)
                     return payload
                 }
                 writeEcho("refresh_failed")
                 return nil
             }
             saveConfig(newCfg)
-            if case .success(let payload) = await requestWidgetData(newCfg) {
-                await finalize(payload)
+            if case .success(let payload) = await requestWidgetData(newCfg, tripId: tripId) {
+                await finalize(payload, tripId: tripId)
                 return payload
             }
             writeEcho("retry_failed")
@@ -207,15 +183,16 @@ struct TripWidgetProvider: TimelineProvider {
         }
     }
 
-    // Cache the payload + sync the background image so the widget can render offline.
-    private static func finalize(_ payload: WidgetPayloadFile) async {
-        savePayload(payload)
-        writeEcho("ok:loggedIn=\(payload.isLoggedIn):trip=\(payload.trip?.tripId ?? "nil"):days=\(payload.trip?.daysLeft ?? -1)")
-        await syncBackgroundImage(payload.trip?.backgroundImageUrl)
+    private static func finalize(_ payload: WidgetPayloadFile, tripId: String) async {
+        savePayload(payload, tripId: tripId)
+        writeEcho("ok:trip=\(payload.trip?.tripId ?? "nil"):days=\(payload.trip?.daysLeft ?? -1)")
+        await syncBackgroundImage(payload.trip?.backgroundImageUrl, tripId: tripId)
     }
 
-    private static func requestWidgetData(_ cfg: WidgetConfigFile) async -> FetchResult {
-        guard let url = URL(string: cfg.supabaseUrl + "/functions/v1/widget-data") else { return .failure }
+    private static func requestWidgetData(_ cfg: WidgetConfigFile, tripId: String) async -> FetchResult {
+        guard var comps = URLComponents(string: cfg.supabaseUrl + "/functions/v1/widget-data") else { return .failure }
+        comps.queryItems = [URLQueryItem(name: "tripId", value: tripId)]
+        guard let url = comps.url else { return .failure }
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.timeoutInterval = 12
@@ -237,7 +214,6 @@ struct TripWidgetProvider: TimelineProvider {
         }
     }
 
-    // Exchanges the (rotating) refresh token for a fresh session via GoTrue.
     private static func refreshSession(_ cfg: WidgetConfigFile) async -> WidgetConfigFile? {
         guard let url = URL(string: cfg.supabaseUrl + "/auth/v1/token?grant_type=refresh_token") else { return nil }
         var req = URLRequest(url: url)
@@ -259,41 +235,35 @@ struct TripWidgetProvider: TimelineProvider {
         }
     }
 
-    // Tải (hoặc xoá) ảnh nền vào App Group. Trả về TRUE nếu ảnh đổi (để reload).
-    // Dedup theo PATH của ảnh (bỏ query token — signed URL đổi token mỗi lần) →
-    // cùng 1 ảnh thì không tải lại; ảnh của trip khác thì tải mới.
+    // Ảnh nền theo TỪNG trip (widget_bg_<tripId>.jpg). Dedup theo path (bỏ query token).
     @discardableResult
-    private static func syncBackgroundImage(_ urlStr: String?) async -> Bool {
+    private static func syncBackgroundImage(_ urlStr: String?, tripId: String) async -> Bool {
         guard let container = containerURL() else { return false }
-        let fileURL = container.appendingPathComponent("widget_bg.jpg")
-        let pathMarkerURL = container.appendingPathComponent("widget_bg_path.txt")
-        let currentPath = try? String(contentsOf: pathMarkerURL, encoding: .utf8)
+        let fileURL = container.appendingPathComponent("widget_bg_\(tripId).jpg")
+        let markerURL = container.appendingPathComponent("widget_bg_path_\(tripId).txt")
+        let currentPath = try? String(contentsOf: markerURL, encoding: .utf8)
 
-        // Không có ảnh → xoá để về gradient
         guard let urlStr, let url = URL(string: urlStr) else {
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 try? FileManager.default.removeItem(at: fileURL)
-                try? FileManager.default.removeItem(at: pathMarkerURL)
+                try? FileManager.default.removeItem(at: markerURL)
                 return true
             }
             return false
         }
-
-        // Cùng ảnh (path giống, file đã có) → khỏi tải lại
         if currentPath == url.path, FileManager.default.fileExists(atPath: fileURL.path) {
             return false
         }
-
         if let (data, resp) = try? await URLSession.shared.data(from: url),
            (resp as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty {
             try? data.write(to: fileURL, options: .atomic)
-            try? url.path.write(to: pathMarkerURL, atomically: true, encoding: .utf8)
+            try? url.path.write(to: markerURL, atomically: true, encoding: .utf8)
             return true
         }
         return false
     }
 
-    // ── TimelineProvider ─────────────────────────────────────────────────────
+    // ── Provider protocol ─────────────────────────────────────────────────────
 
     private var placeholderData: WidgetTripData {
         WidgetTripData(tripId: "", tripName: "Đà Lạt", tripEmoji: "🌸",
@@ -304,104 +274,66 @@ struct TripWidgetProvider: TimelineProvider {
     }
 
     func placeholder(in context: Context) -> TripWidgetEntry {
-        TripWidgetEntry(date: Date(), data: placeholderData, isLoggedIn: true)
+        TripWidgetEntry(date: Date(), data: placeholderData, isLoggedIn: true, tripId: nil)
     }
 
-    // If a session config exists, the user IS logged in — even if a data fetch
-    // hasn't succeeded yet. Deriving "logged in" from the payload alone made one
-    // family stick on the "Đăng nhập" prompt when its first fetch failed.
-    private static func hasAuthConfig() -> Bool { loadConfig() != nil }
-
-    // The session config file is the SINGLE source of truth for "is the user
-    // logged in". The fetched payload only decides whether we have trip DATA.
-    // Deriving login from the config (not the payload) guarantees:
-    //   • a transient fetch failure never drops the widget to LoginPrompt;
-    //   • Small and Medium always agree (they read the same file);
-    //   • the "trip data present but isLoggedIn=false" state is impossible.
-    private static func resolveLoggedIn(_ payload: WidgetPayloadFile?) -> Bool {
-        // Config present → logged in, period. Also treat a cached logged-in payload
-        // as logged-in to cover the brief window before the config is written.
-        hasAuthConfig() || (payload?.isLoggedIn ?? false)
+    func snapshot(for configuration: SelectTripIntent, in context: Context) async -> TripWidgetEntry {
+        let loggedIn = Self.hasAuthConfig()
+        guard loggedIn, let tripId = configuration.trip?.id else {
+            return TripWidgetEntry(date: Date(),
+                                   data: loggedIn ? nil : placeholderData,
+                                   isLoggedIn: loggedIn,
+                                   tripId: configuration.trip?.id)
+        }
+        let cached = Self.loadPayload(tripId)?.trip
+        return TripWidgetEntry(date: Date(), data: cached ?? placeholderData, isLoggedIn: true, tripId: tripId)
     }
 
-    // ── Live reads for the entry view ────────────────────────────────────────
-    // A widget's `isLoggedIn` / data is baked into the timeline when it's created.
-    // If iOS holds a stale PRE-LOGIN timeline (common on the small family due to
-    // per-widget refresh budgets), the view would keep showing the login prompt /
-    // placeholder forever. These let the view read the CURRENT state from the App
-    // Group at render time, so a stale timeline self-heals without a reload.
-    // Live login = config present OR the cached payload says logged-in. Checking
-    // the cache too lets a stale pre-login timeline self-heal from widget_data.json
-    // (which the app always writes with isLoggedIn=true) even before the session
-    // config file exists.
-    static func isLoggedInNow() -> Bool { resolveLoggedIn(loadPayload()) }
-    static func liveTrip() -> WidgetTripData? {
-        guard let trip = loadPayload()?.trip else { return nil }
-        return refreshed(trip, at: Date())
-    }
+    func timeline(for configuration: SelectTripIntent, in context: Context) async -> Timeline<TripWidgetEntry> {
+        let loggedIn = Self.hasAuthConfig()
+        let next = Date().addingTimeInterval(Self.refreshInterval)
 
-    // Snapshot must be fast (widget gallery / transitions) — use the cache only.
-    func getSnapshot(in context: Context, completion: @escaping (TripWidgetEntry) -> Void) {
-        let cached = Self.loadPayload()
-        let loggedIn = Self.resolveLoggedIn(cached)
-        let base = cached?.trip ?? placeholderData
-        completion(TripWidgetEntry(date: Date(), data: Self.refreshed(base, at: Date()), isLoggedIn: loggedIn))
-    }
+        // Chưa đăng nhập
+        if !loggedIn {
+            let e = TripWidgetEntry(date: Date(), data: nil, isLoggedIn: false, tripId: nil)
+            return Timeline(entries: [e], policy: .after(next))
+        }
+        // Chưa chọn trip
+        guard let tripId = configuration.trip?.id else {
+            let e = TripWidgetEntry(date: Date(), data: nil, isLoggedIn: true, tripId: nil)
+            return Timeline(entries: [e], policy: .after(next))
+        }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<TripWidgetEntry>) -> Void) {
-        // Build the timeline from the CACHE and return IMMEDIATELY. A widget
-        // extension has a very short execution budget; blocking here on a network
-        // fetch (token refresh + edge function, up to ~20s) can exceed it, so iOS
-        // kills the extension before `completion` runs and the widget stays stuck
-        // on the gray "loading" placeholder. That's exactly what broke the small
-        // widget. The network refresh now runs in the background (see below).
-        let cached = Self.loadPayload()
-        let loggedIn = Self.resolveLoggedIn(cached)
-        let base = cached?.trip ?? placeholderData
-        let hasRealTrip = cached?.trip != nil
+        // Fetch dữ liệu trip đã chọn (fresh); lỗi mạng thì dùng cache.
+        let fresh = await WidgetDataLoader.shared.load(key: tripId) {
+            await Self.fetchRemotePayload(tripId: tripId)
+        }
+        let payload = fresh ?? Self.loadPayload(tripId)
 
-        // Daily entries keep the countdown ticking even if iOS skips refreshes.
+        // trip:null (đã xoá / mất quyền) hoặc chưa có cache → "Chưa chọn chuyến đi".
+        guard let base = payload?.trip else {
+            let e = TripWidgetEntry(date: Date(), data: nil, isLoggedIn: true, tripId: tripId)
+            return Timeline(entries: [e], policy: .after(next))
+        }
+
+        // Entries theo ngày → đếm ngược vẫn chạy dù iOS bỏ vài lần refresh.
         let calendar = Calendar.current
         let todayStart = calendar.startOfDay(for: Date())
         let entries: [TripWidgetEntry] = (0..<30).compactMap { offset in
             guard let day = calendar.date(byAdding: .day, value: offset, to: todayStart) else { return nil }
-            return TripWidgetEntry(date: day, data: Self.refreshed(base, at: day, dayOffset: offset), isLoggedIn: loggedIn)
+            return TripWidgetEntry(date: day,
+                                   data: Self.refreshed(base, at: day, dayOffset: offset),
+                                   isLoggedIn: true,
+                                   tripId: tripId)
         }
-
-        // If we don't have real data yet, retry on a MODERATE cadence. A tight retry
-        // burns the per-widget refresh budget, after which iOS stops regenerating
-        // the timeline entirely.
-        let interval: TimeInterval = hasRealTrip ? Self.refreshInterval : 15 * 60
-        completion(Timeline(entries: entries, policy: .after(Date().addingTimeInterval(interval))))
-
-        // Background refresh — does NOT block the timeline above. If the freshly
-        // fetched payload differs from what we just rendered, ask iOS for one reload
-        // so the new data shows. The diff check prevents an infinite reload loop.
-        let before = cached.flatMap { try? JSONEncoder().encode($0) }
-        Task.detached {
-            // Đồng bộ ảnh nền theo trip ĐANG hiển thị (app vừa đẩy) TRƯỚC — tránh
-            // dùng nhầm ảnh của trip cũ khi getTimeline chỉ đọc cache.
-            if await Self.syncBackgroundImage(cached?.trip?.backgroundImageUrl),
-               #available(iOS 14.0, *) {
-                WidgetCenter.shared.reloadAllTimelines()
-            }
-            guard let fresh = await WidgetDataLoader.shared.load({ await Self.fetchRemotePayload() }) else { return }
-            let after = try? JSONEncoder().encode(fresh)
-            if before != after, #available(iOS 14.0, *) {
-                WidgetCenter.shared.reloadAllTimelines()
-            }
-        }
+        return Timeline(entries: entries, policy: .after(next))
     }
 
-    // Recompute daysLeft and status from stored startDate/endDate for a given reference date.
-    // Fallback when dates unavailable: decrement stored daysLeft by dayOffset so it still ticks down.
+    // Recompute daysLeft/status/todayActivities cho ngày tham chiếu.
     private static func refreshed(_ data: WidgetTripData, at refDate: Date, dayOffset: Int = 0) -> WidgetTripData {
         let calendar = Calendar.current
         var out = data
 
-        // Chọn lịch của ĐÚNG ngày entry này, để khi countdown sang ngày mới mà app
-        // không mở, widget vẫn hiện hoạt động của ngày tương ứng. Nếu payload cũ
-        // (chưa có schedule) thì giữ nguyên todayActivities tĩnh.
         if !data.schedule.isEmpty {
             let f = DateFormatter()
             f.dateFormat = "yyyy-MM-dd"
@@ -423,7 +355,6 @@ struct TripWidgetProvider: TimelineProvider {
             else if refStr < startStr { out.status = "upcoming" }
             else { out.status = "past" }
         } else {
-            // No dates in UserDefaults (old cache) — decrement by day offset so countdown still ticks
             out.daysLeft = max(0, data.daysLeft - dayOffset)
             if out.daysLeft == 0 && out.status == "upcoming" { out.status = "ongoing" }
         }
@@ -540,8 +471,9 @@ struct WidgetGradient: View {
 
 struct WidgetBackground: View {
     let data: WidgetTripData
+    let tripId: String
     var body: some View {
-        if let photo = loadBackgroundImage() {
+        if let photo = loadBackgroundImage(tripId: tripId) {
             ZStack {
                 photo
                     .resizable()
@@ -591,9 +523,7 @@ struct TripWidgetSmallView: View {
     let data: WidgetTripData
     var body: some View {
         ZStack {
-
             VStack(alignment: .leading, spacing: 0) {
-                // Title row
                 HStack(spacing: 5) {
                     Text(data.tripName)
                         .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -610,10 +540,8 @@ struct TripWidgetSmallView: View {
                         .clipShape(Capsule())
                 }
 
-                // Single spacer pushes countdown block down
                 Spacer(minLength: 0)
 
-                // Countdown block — always rendered as a unit so nothing gets clipped
                 VStack(alignment: .leading, spacing: 0) {
                     if !data.countdownText.isEmpty {
                         Text(data.countdownText)
@@ -661,9 +589,7 @@ struct TripWidgetMediumView: View {
     let data: WidgetTripData
     var body: some View {
         ZStack {
-
             HStack(spacing: 0) {
-                // Left: countdown
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 5) {
                         Text(data.tripName)
@@ -680,10 +606,8 @@ struct TripWidgetMediumView: View {
                             .clipShape(Capsule())
                     }
 
-                    // Single spacer — lets the countdown+badge block sit at the bottom
                     Spacer(minLength: 0)
 
-                    // Countdown + badge as one block so badge is never clipped
                     VStack(alignment: .leading, spacing: 0) {
                         if !data.countdownText.isEmpty {
                             Text(data.countdownText)
@@ -727,7 +651,6 @@ struct TripWidgetMediumView: View {
                     .padding(.vertical, 10)
                     .padding(.horizontal, 10)
 
-                // Right: activities
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 5) {
                         Image(systemName: "calendar")
@@ -819,8 +742,7 @@ struct LoginGradient: View {
 struct LoginPromptView: View {
     var body: some View {
         VStack(spacing: 6) {
-            Text("✈️")
-                .font(.system(size: 34))
+            Text("✈️").font(.system(size: 34))
             Text("TripMemo")
                 .font(.system(size: 14, weight: .black, design: .rounded))
                 .foregroundColor(.white)
@@ -833,44 +755,63 @@ struct LoginPromptView: View {
     }
 }
 
+// MARK: - Empty state (chưa chọn chuyến đi)
+
+struct EmptyStateGradient: View {
+    var body: some View {
+        LinearGradient(
+            colors: [Color(red: 0.40, green: 0.46, blue: 0.58), Color(red: 0.26, green: 0.30, blue: 0.40)],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+    }
+}
+
+struct EmptyStateView: View {
+    var body: some View {
+        VStack(spacing: 6) {
+            Text("🧳").font(.system(size: 32))
+            Text("Chưa chọn chuyến đi")
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+            Text("Nhấn giữ widget → Chỉnh sửa\nđể chọn chuyến đi")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.white.opacity(0.75))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(12)
+    }
+}
+
 // MARK: - Entry view + Widget
 
 struct TripWidgetView: View {
     @Environment(\.widgetFamily) var family
     let entry: TripWidgetEntry
 
-    // Prefer the live App-Group state over the value baked into this (possibly
-    // stale) timeline, so a frozen pre-login small widget recovers on its own.
-    private var isLoggedIn: Bool { entry.isLoggedIn || TripWidgetProvider.isLoggedInNow() }
-    private var data: WidgetTripData {
-        // Baked entry is a placeholder (empty tripId) but a real trip is cached →
-        // show the live cached trip instead of the hardcoded placeholder.
-        if entry.data.tripId.isEmpty, let live = TripWidgetProvider.liveTrip() { return live }
-        return entry.data
-    }
-
     @ViewBuilder var content: some View {
-        if !isLoggedIn {
+        if !entry.isLoggedIn {
             LoginPromptView()
-        } else {
+        } else if let data = entry.data {
             switch family {
-            case .systemSmall:  TripWidgetSmallView(data: data)
             case .systemMedium: TripWidgetMediumView(data: data)
             default:            TripWidgetSmallView(data: data)
             }
+        } else {
+            EmptyStateView()
         }
     }
 
     var body: some View {
         content
-            // iOS 17+ uses containerBackground as THE widget background. Drawing the
-            // background here (instead of inside a ZStack with a .clear container)
-            // prevents the system from falling back to its gray placeholder background.
             .containerBackground(for: .widget) {
-                if isLoggedIn {
-                    WidgetBackground(data: data)
-                } else {
+                if !entry.isLoggedIn {
                     LoginGradient()
+                } else if let data = entry.data, let tripId = entry.tripId {
+                    WidgetBackground(data: data, tripId: tripId)
+                } else {
+                    EmptyStateGradient()
                 }
             }
     }
@@ -879,14 +820,20 @@ struct TripWidgetView: View {
 struct TripWidget: Widget {
     let kind: String = "TripWidget"
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: TripWidgetProvider()) { entry in
+        AppIntentConfiguration(kind: kind, intent: SelectTripIntent.self, provider: TripWidgetProvider()) { entry in
             TripWidgetView(entry: entry)
-                .widgetURL(entry.isLoggedIn ? URL(string: "tripmemo://trip/\(entry.data.tripId)") : URL(string: "tripmemo://login"))
+                .widgetURL(widgetURL(for: entry))
         }
         .configurationDisplayName("TripMemo")
-        .description("Xem nhanh chuyến đi của bạn.")
+        .description("Chọn chuyến đi để hiển thị đếm ngược.")
         .supportedFamilies([.systemSmall, .systemMedium])
         .contentMarginsDisabled()
+    }
+
+    private func widgetURL(for entry: TripWidgetEntry) -> URL? {
+        if !entry.isLoggedIn { return URL(string: "tripmemo://login") }
+        if let id = entry.data?.tripId, !id.isEmpty { return URL(string: "tripmemo://trip/\(id)") }
+        return URL(string: "tripmemo://")
     }
 }
 
@@ -901,18 +848,14 @@ private func formatMoney(_ value: Int) -> String {
     return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
 }
 
-private func loadBackgroundImage() -> Image? {
+private func loadBackgroundImage(tripId: String) -> Image? {
     guard let containerURL = FileManager.default.containerURL(
         forSecurityApplicationGroupIdentifier: TripWidgetProvider.appGroupID
     ) else { return nil }
-    let fileURL = containerURL.appendingPathComponent("widget_bg.jpg")
+    let fileURL = containerURL.appendingPathComponent("widget_bg_\(tripId).jpg")
     guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
 
-    // Downsample instead of loading the full-resolution photo. A widget extension
-    // has a very tight memory budget (~30MB); decoding a large trip photo can blow
-    // past it and get the extension jetsammed — which makes iOS fall back to the
-    // gray "loading" placeholder (this hit the small family hardest). Thumbnailing
-    // via ImageIO never fully decodes the original, so memory stays tiny.
+    // Downsample để không vượt ngân sách bộ nhớ ~30MB của widget extension.
     let options: [CFString: Any] = [
         kCGImageSourceCreateThumbnailFromImageAlways: true,
         kCGImageSourceCreateThumbnailWithTransform: true,
@@ -932,29 +875,7 @@ private func loadBackgroundImage() -> Image? {
 } timeline: {
     TripWidgetEntry(date: Date(), data: WidgetTripData(tripId: "preview_1", tripName: "Đà Lạt", tripEmoji: "🌸",
         startDate: nil, endDate: nil, daysLeft: 22, status: "upcoming",
-        todayActivities: ["Thác Datanla"], fundBalance: 1_500_000, totalSpent: 800_000, hasFund: true), isLoggedIn: true)
-    TripWidgetEntry(date: Date(), data: WidgetTripData(tripId: "preview_2", tripName: "Phú Quốc", tripEmoji: "🏖️",
-        startDate: nil, endDate: nil, daysLeft: 3, status: "upcoming",
-        todayActivities: [], fundBalance: 2_200_000, totalSpent: 1_100_000, hasFund: true), isLoggedIn: true)
-    TripWidgetEntry(date: Date(), data: WidgetTripData(tripId: "preview_3", tripName: "Hội An", tripEmoji: "🏮",
-        startDate: nil, endDate: nil, daysLeft: 0, status: "ongoing",
-        todayActivities: ["Phố cổ", "Bánh mì"], fundBalance: 800_000, totalSpent: 1_200_000, hasFund: true), isLoggedIn: true)
-    TripWidgetEntry(date: Date(), data: WidgetTripData(tripId: "", tripName: "", tripEmoji: "",
-        startDate: nil, endDate: nil, daysLeft: 0, status: "upcoming",
-        todayActivities: [], fundBalance: 0, totalSpent: 0, hasFund: false), isLoggedIn: false)
-}
-
-#Preview(as: .systemMedium) {
-    TripWidget()
-} timeline: {
-    TripWidgetEntry(date: Date(), data: WidgetTripData(tripId: "preview_2", tripName: "Phú Quốc", tripEmoji: "🏖️",
-        startDate: nil, endDate: nil, daysLeft: 0, status: "ongoing",
-        todayActivities: ["Lặn ngắm san hô", "Sunset Sanato", "Hải sản Dinh Cậu"],
-        fundBalance: 2_200_000, totalSpent: 1_100_000, hasFund: true), isLoggedIn: true)
-    TripWidgetEntry(date: Date(), data: WidgetTripData(tripId: "preview_4", tripName: "Hà Nội", tripEmoji: "🏛️",
-        startDate: nil, endDate: nil, daysLeft: 5, status: "upcoming",
-        todayActivities: [], fundBalance: 0, totalSpent: 0, hasFund: false), isLoggedIn: true)
-    TripWidgetEntry(date: Date(), data: WidgetTripData(tripId: "", tripName: "", tripEmoji: "",
-        startDate: nil, endDate: nil, daysLeft: 0, status: "upcoming",
-        todayActivities: [], fundBalance: 0, totalSpent: 0, hasFund: false), isLoggedIn: false)
+        todayActivities: ["Thác Datanla"], fundBalance: 1_500_000, totalSpent: 800_000, hasFund: true),
+        isLoggedIn: true, tripId: "preview_1")
+    TripWidgetEntry(date: Date(), data: nil, isLoggedIn: true, tripId: nil)
 }

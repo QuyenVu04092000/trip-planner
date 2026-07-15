@@ -36,11 +36,7 @@ import {
 } from "../utils/db";
 import { supabase } from "../utils/supabase";
 import { scheduleActivityNotifications } from "../utils/activityNotifications";
-import {
-  updateWidgetFromTrip,
-  findNearestTrip,
-  syncNearestTripToWidget,
-} from "../utils/widgetBridge";
+import { reloadWidget } from "../utils/widgetBridge";
 import Itinerary from "./Itinerary";
 import SuggestionsModal from "./SuggestionsModal";
 import Memory from "./Memory";
@@ -50,7 +46,6 @@ import InviteModal from "./InviteModal";
 
 interface Props {
   trip: Trip;
-  allTrips: Trip[];
   initialTab?: "plan" | "memory" | "expense";
   onBack: () => void;
   onTabChange?: (tab: "plan" | "memory" | "expense") => void;
@@ -62,7 +57,6 @@ import { formatDateRange, getCountdown } from "../utils/format";
 
 export default function TripDetail({
   trip,
-  allTrips,
   initialTab = "plan",
   onBack,
   onTabChange,
@@ -138,22 +132,9 @@ export default function TripDetail({
     });
 
     Promise.all([activitiesP, mediaP, expensesP, fundsP, fundPaymentsP]).then(
-      ([acts, mediaItems, exps, fds, fps]) => {
+      () => {
+        // Đánh dấu đã load xong — từ đây các thay đổi dữ liệu mới kích widget reload.
         widgetReady.current = true;
-        // Only push the open trip if it's the nearest one; otherwise push the
-        // real nearest trip so the widget never shows a non-nearest trip.
-        if (findNearestTrip(allTrips)?.id === trip.id) {
-          void updateWidgetFromTrip({
-            trip,
-            activities: acts,
-            expenses: exps,
-            funds: fds,
-            fundPayments: fps,
-            media: mediaItems,
-          });
-        } else {
-          void syncNearestTripToWidget(allTrips);
-        }
       },
     );
 
@@ -191,26 +172,11 @@ export default function TripDetail({
     };
   }, [trip.id]);
 
-  // Realtime widget sync — fires whenever any relevant data changes after initial load
+  // Dữ liệu trong trip đổi sau lần load đầu (hoạt động/chi tiêu/quỹ/ảnh) → kích
+  // widget reload để widget nào đang chọn trip này tự fetch dữ liệu mới.
   useEffect(() => {
-    console.log(
-      "[Widget] reactive check — ready:",
-      widgetReady.current,
-      "| startDate:",
-      trip.startDate,
-    );
     if (!widgetReady.current) return;
-    if (findNearestTrip(allTrips)?.id === trip.id) {
-      void updateWidgetFromTrip({
-        trip,
-        activities,
-        expenses,
-        funds,
-        fundPayments,
-      });
-    } else {
-      void syncNearestTripToWidget(allTrips);
-    }
+    void reloadWidget();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     trip.startDate,
@@ -221,7 +187,7 @@ export default function TripDetail({
     funds,
     fundPayments,
     activities,
-    allTrips,
+    media,
   ]);
 
   const handleAdd = useCallback(
@@ -244,6 +210,8 @@ export default function TripDetail({
         time: "",
         activity: s.name,
         address: s.address ?? "",
+        lat: s.lat ?? null,   // giữ toạ độ chính xác từ gợi ý → "Dẫn đường" trỏ đúng pin
+        lon: s.lon ?? null,
         cost: "",
         notes: s.description ?? "",
         position: Date.now(),
@@ -294,36 +262,36 @@ export default function TripDetail({
   const videoCount = media.filter((m) => m.type === "video").length;
 
   return (
-    <div className="h-[100svh] bg-slate-50 flex flex-col overflow-hidden">
+    <div className="h-[100svh] bg-paper flex flex-col overflow-hidden">
       {/* Header */}
       <header className="sticky top-0 z-30">
         {/* Frosted glass nav bar */}
-        <div className="bg-white/80 backdrop-blur-xl border-b border-slate-100/80 shadow-sm pt-safe">
+        <div className="bg-white/80 backdrop-blur-xl border-b border-sand/80 shadow-sm pt-safe">
           {/* Dòng 1: back + tên + actions chính */}
           <div className="px-4 py-2.5 flex items-center gap-2">
             <button
               onClick={onBack}
-              className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors flex-shrink-0"
+              className="w-8 h-8 bg-parchment hover:bg-sand rounded-xl flex items-center justify-center text-stone hover:text-ink transition-colors flex-shrink-0"
             >
               <ArrowLeft size={15} />
             </button>
             <span className="text-lg flex-shrink-0">{trip.emoji}</span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <h1 className="text-slate-900 font-bold text-[15px] truncate leading-tight">
+                <h1 className="font-serif text-ink font-semibold text-[16px] truncate leading-tight">
                   {trip.name}
                 </h1>
                 {(() => {
                   const cd = getCountdown(trip.startDate, trip.endDate);
                   if (cd.type === "today")
                     return (
-                      <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 animate-pulse">
+                      <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sage-pale text-sage-dark animate-pulse">
                         Hôm nay! 🎉
                       </span>
                     );
                   if (cd.type === "ongoing")
                     return (
-                      <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">
+                      <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sage-pale text-sage-dark">
                         Đang diễn ra
                       </span>
                     );
@@ -332,10 +300,10 @@ export default function TripDetail({
                       <span
                         className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                           cd.days <= 3
-                            ? "bg-amber-100 text-amber-600"
+                            ? "bg-gold-pale text-gold-dark"
                             : cd.days <= 7
-                              ? "bg-orange-100 text-orange-600"
-                              : "bg-blue-100 text-blue-600"
+                              ? "bg-terra-pale text-terra-dark"
+                              : "bg-terra-pale text-terra-dark"
                         }`}
                       >
                         {cd.label}
@@ -349,14 +317,14 @@ export default function TripDetail({
             <div className="flex items-center gap-1 flex-shrink-0">
               <button
                 onClick={() => setShowInvite(true)}
-                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors"
+                className="w-8 h-8 bg-parchment hover:bg-sand rounded-xl flex items-center justify-center text-stone hover:text-ink transition-colors"
               >
                 <UserPlus size={13} />
               </button>
               {ownerStatus && (
                 <button
                   onClick={() => setShowEdit(true)}
-                  className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors"
+                  className="w-8 h-8 bg-parchment hover:bg-sand rounded-xl flex items-center justify-center text-stone hover:text-ink transition-colors"
                 >
                   <Pencil size={13} />
                 </button>
@@ -364,7 +332,7 @@ export default function TripDetail({
               <button
                 onClick={onLogout}
                 title="Đăng xuất"
-                className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors"
+                className="w-8 h-8 bg-parchment hover:bg-sand rounded-xl flex items-center justify-center text-stone hover:text-ink transition-colors"
               >
                 <LogOut size={13} />
               </button>
@@ -373,7 +341,7 @@ export default function TripDetail({
 
           {/* Dòng 2: date + avatars */}
           <div className="px-4 pb-2 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-slate-400 text-xs flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 text-stone text-xs flex-1 min-w-0">
               {trip.destination && (
                 <span className="hidden sm:flex items-center gap-1 truncate max-w-[100px]">
                   <Map size={10} className="flex-shrink-0" />
@@ -389,11 +357,11 @@ export default function TripDetail({
               <div className="flex items-center -space-x-1.5 flex-shrink-0">
                 {members.slice(0, 4).map((m) => {
                   const colors = [
-                    "bg-blue-400",
-                    "bg-violet-400",
-                    "bg-pink-400",
-                    "bg-amber-400",
-                    "bg-emerald-400",
+                    "bg-terra",
+                    "bg-plum",
+                    "bg-clay",
+                    "bg-gold",
+                    "bg-moss",
                   ];
                   let hash = 0;
                   for (const c of m.userEmail)
@@ -409,7 +377,7 @@ export default function TripDetail({
                   );
                 })}
                 {members.length > 4 && (
-                  <div className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-slate-500 text-[9px] font-bold">
+                  <div className="w-6 h-6 rounded-full border-2 border-white bg-sand flex items-center justify-center text-stone text-[9px] font-bold">
                     +{members.length - 4}
                   </div>
                 )}
@@ -418,27 +386,27 @@ export default function TripDetail({
           </div>
 
           {/* Tab bar — same glass surface, just a separator line */}
-          <div className="px-4 flex items-center border-t border-slate-100/60">
+          <div className="px-4 flex items-center border-t border-sand/60">
             <button
               onClick={() => setTab("plan")}
               className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${
                 tab === "plan"
-                  ? "text-blue-600"
-                  : "text-slate-400 hover:text-slate-600"
+                  ? "text-terra-dark"
+                  : "text-stone hover:text-stone"
               }`}
             >
               <TableProperties size={13} />
               Kế hoạch
               {tab === "plan" && (
-                <span className="absolute bottom-0 inset-x-2 h-0.5 bg-blue-500 rounded-full" />
+                <span className="absolute bottom-0 inset-x-2 h-0.5 bg-terra rounded-full" />
               )}
             </button>
             <button
               onClick={() => setTab("expense")}
               className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${
                 tab === "expense"
-                  ? "text-emerald-600"
-                  : "text-slate-400 hover:text-slate-600"
+                  ? "text-sage-dark"
+                  : "text-stone hover:text-stone"
               }`}
             >
               <Wallet size={13} />
@@ -447,23 +415,23 @@ export default function TripDetail({
                 <span
                   className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
                     tab === "expense"
-                      ? "bg-emerald-100 text-emerald-600"
-                      : "bg-slate-100 text-slate-400"
+                      ? "bg-sage-pale text-sage-dark"
+                      : "bg-parchment text-stone"
                   }`}
                 >
                   {expenses.length}
                 </span>
               )}
               {tab === "expense" && (
-                <span className="absolute bottom-0 inset-x-2 h-0.5 bg-emerald-500 rounded-full" />
+                <span className="absolute bottom-0 inset-x-2 h-0.5 bg-sage-dark rounded-full" />
               )}
             </button>
             <button
               onClick={() => setTab("memory")}
               className={`relative flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-all whitespace-nowrap ${
                 tab === "memory"
-                  ? "text-amber-500"
-                  : "text-slate-400 hover:text-slate-600"
+                  ? "text-gold"
+                  : "text-stone hover:text-stone"
               }`}
             >
               <GalleryHorizontal size={13} />
@@ -472,15 +440,15 @@ export default function TripDetail({
                 <span
                   className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
                     tab === "memory"
-                      ? "bg-amber-100 text-amber-600"
-                      : "bg-slate-100 text-slate-400"
+                      ? "bg-gold-pale text-gold-dark"
+                      : "bg-parchment text-stone"
                   }`}
                 >
                   {imageCount + videoCount}
                 </span>
               )}
               {tab === "memory" && (
-                <span className="absolute bottom-0 inset-x-2 h-0.5 bg-amber-400 rounded-full" />
+                <span className="absolute bottom-0 inset-x-2 h-0.5 bg-gold rounded-full" />
               )}
             </button>
           </div>
@@ -508,7 +476,7 @@ export default function TripDetail({
         ) : tab === "plan" ? (
           <div className="flex-1 overflow-auto">
             {planLoading ? (
-              <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
+              <div className="flex items-center justify-center h-40 text-stone text-sm">
                 Đang tải kế hoạch...
               </div>
             ) : (
@@ -528,7 +496,7 @@ export default function TripDetail({
               <button
                 onClick={() => setShowSuggestions(true)}
                 title="Gợi ý địa điểm"
-                className="fixed bottom-6 left-6 z-20 h-14 pl-4 pr-5 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl shadow-xl hover:shadow-2xl flex items-center gap-2 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+                className="fixed bottom-6 left-6 z-20 h-14 pl-4 pr-5 bg-ink hover:bg-ink-light text-white rounded-2xl shadow-xl hover:shadow-2xl flex items-center gap-2 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
               >
                 <Sparkles size={20} />
                 <span className="text-sm font-semibold">Gợi ý</span>
@@ -570,6 +538,7 @@ export default function TripDetail({
         <SuggestionsModal
           tripId={trip.id}
           destination={trip.destination}
+          existingNames={activities.map((a) => a.activity).filter(Boolean)}
           onAdd={handleAddSuggestion}
           onClose={() => setShowSuggestions(false)}
         />

@@ -39,13 +39,13 @@ export default function FundCard({ fund, payments, members, currentUserId, canMa
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gold/30 shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 bg-amber-50/60 flex items-center gap-3">
+      <div className="px-4 py-3 bg-gold-pale/60 flex items-center gap-3">
         <span className="text-xl flex-shrink-0">💰</span>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 truncate">{fund.description}</p>
-          <p className="text-xs text-amber-700 font-medium mt-0.5">
+          <p className="text-sm font-semibold text-ink truncate">{fund.description}</p>
+          <p className="text-xs text-gold-dark font-medium mt-0.5">
             {fund.amountPerPerson.toLocaleString('vi-VN')}đ / người
           </p>
           {(() => {
@@ -53,21 +53,21 @@ export default function FundCard({ fund, payments, members, currentUserId, canMa
             const name = member?.displayName ?? fund.createdBy;
             const isMe = fund.createdBy === currentUserId;
             return (
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                Giữ quỹ: <span className="font-medium text-slate-500">{name}{isMe ? ' (bạn)' : ''}</span>
+              <p className="text-[10px] text-stone mt-0.5">
+                Giữ quỹ: <span className="font-medium text-stone">{name}{isMe ? ' (bạn)' : ''}</span>
               </p>
             );
           })()}
         </div>
         <div className="text-right flex-shrink-0 mr-1">
-          <p className="text-sm font-bold text-slate-700">{paidCount}/{payments.length}</p>
-          <p className="text-[10px] text-slate-400">đã nộp</p>
+          <p className="text-sm font-bold text-ink">{paidCount}/{payments.length}</p>
+          <p className="text-[10px] text-stone">đã nộp</p>
         </div>
         {canManage && (
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="p-1.5 text-slate-300 hover:text-red-400 transition-colors flex-shrink-0"
+            className="p-1.5 text-dune hover:text-wine transition-colors flex-shrink-0"
           >
             {deleting
               ? <Loader2 size={14} className="animate-spin" />
@@ -78,7 +78,7 @@ export default function FundCard({ fund, payments, members, currentUserId, canMa
       </div>
 
       {/* Member list */}
-      <div className="divide-y divide-slate-50">
+      <div className="divide-y divide-sand/40">
         {payments.map(p => {
           const isMe      = p.userId === currentUserId;
           const canToggle = canManage || isMe;
@@ -90,19 +90,19 @@ export default function FundCard({ fund, payments, members, currentUserId, canMa
                 className={`flex-shrink-0 transition-colors ${canToggle ? 'cursor-pointer active:scale-90' : 'cursor-default'}`}
               >
                 {toggling === p.id
-                  ? <Loader2 size={18} className="animate-spin text-amber-400" />
+                  ? <Loader2 size={18} className="animate-spin text-gold" />
                   : p.paid
-                    ? <CheckCircle2 size={18} className="text-emerald-500" />
-                    : <Circle      size={18} className="text-slate-300" />
+                    ? <CheckCircle2 size={18} className="text-moss" />
+                    : <Circle      size={18} className="text-dune" />
                 }
               </button>
 
-              <span className={`flex-1 text-sm truncate ${p.paid ? 'text-slate-700' : 'text-slate-400'}`}>
+              <span className={`flex-1 text-sm truncate ${p.paid ? 'text-ink' : 'text-stone'}`}>
                 {members.find(m => m.userId === p.userId)?.displayName ?? p.userEmail.split('@')[0]}
-                {isMe && <span className="text-slate-400 text-xs ml-1">(bạn)</span>}
+                {isMe && <span className="text-stone text-xs ml-1">(bạn)</span>}
               </span>
 
-              <span className={`text-xs font-semibold flex-shrink-0 ${p.paid ? 'text-emerald-600' : 'text-slate-300'}`}>
+              <span className={`text-xs font-semibold flex-shrink-0 ${p.paid ? 'text-sage-dark' : 'text-dune'}`}>
                 {p.paid
                   ? `${fund.amountPerPerson.toLocaleString('vi-VN')}đ ✓`
                   : 'Chưa nộp'
@@ -114,19 +114,19 @@ export default function FundCard({ fund, payments, members, currentUserId, canMa
       </div>
 
       {/* Progress */}
-      <div className="px-4 pb-3 pt-2 border-t border-slate-50">
-        <div className="flex justify-between text-xs text-slate-400 mb-1.5">
+      <div className="px-4 pb-3 pt-2 border-t border-sand/40">
+        <div className="flex justify-between text-xs text-stone mb-1.5">
           <span>
             Đã thu:{' '}
-            <span className="font-semibold text-slate-600">
+            <span className="font-semibold text-stone">
               {totalCollected.toLocaleString('vi-VN')}đ
             </span>
           </span>
           <span>{totalExpected.toLocaleString('vi-VN')}đ</span>
         </div>
-        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-parchment rounded-full overflow-hidden">
           <div
-            className="h-full bg-emerald-400 rounded-full transition-all duration-500"
+            className="h-full bg-moss rounded-full transition-all duration-500"
             style={{ width: `${pct}%` }}
           />
         </div>

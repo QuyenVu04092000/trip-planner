@@ -1,10 +1,17 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { Session } from '@supabase/supabase-js';
-import type { Trip, TripExpense, TripFund, TripFundPayment, Activity, MediaItem } from '../types';
+import type { Trip } from '../types';
 import { supabase } from './supabase';
-import { fetchActivities, fetchExpenses, fetchFunds, fetchFundPayments, fetchMediaItems } from './db';
 
 // ── Plugin interface ──────────────────────────────────────────────────────────
+//
+// KIẾN TRÚC (widget cấu hình chọn trip):
+//   Người dùng long-press widget → chọn 1 trip. Widget TỰ fetch `widget-data?tripId=`
+//   để lấy nội dung + ảnh nền của ĐÚNG trip đó. App chỉ:
+//     • công bố DANH SÁCH trip (setWidgetTripList) → để picker liệt kê
+//     • đẩy auth (setWidgetAuth) để widget gọi được edge function
+//     • kích reload (reloadWidget) mỗi khi dữ liệu đổi → widget fetch lại
+//   Không còn "trip gần nhất" và không còn app-đẩy-payload → không có race.
 
 interface WidgetAuthPayload {
   supabaseUrl: string;
@@ -13,8 +20,15 @@ interface WidgetAuthPayload {
   refreshToken: string;
 }
 
+interface WidgetTripListItem {
+  id: string;
+  name: string;
+  emoji: string;
+}
+
 interface WidgetBridgePlugin {
-  updateWidgetData(data: object): Promise<void>;
+  setWidgetTripList(data: { trips: WidgetTripListItem[] }): Promise<void>;
+  reloadWidget(): Promise<void>;
   setWidgetLoggedIn(): Promise<void>;
   setWidgetLoggedOut(): Promise<void>;
   readWidgetEcho(): Promise<{ echo: string; appHasGroup: boolean }>;
@@ -26,154 +40,31 @@ interface WidgetBridgePlugin {
 // The old `window.Capacitor.Plugins.X` pattern no longer works in Capacitor 8.
 const WidgetBridge = registerPlugin<WidgetBridgePlugin>('WidgetBridge');
 
-// ── Payload type ──────────────────────────────────────────────────────────────
-
-interface WidgetPayload {
-  tripId: string;
-  tripName: string;
-  tripEmoji: string;
-  startDate: string;
-  endDate: string;
-  daysLeft: number;
-  status: 'upcoming' | 'ongoing' | 'past';
-  todayActivities: string[];
-  // Lịch theo từng ngày (key "yyyy-MM-dd" → ["timeactivity"]) để widget
-  // hiện đúng hoạt động của mỗi ngày khi countdown sang ngày mới mà app không mở.
-  schedule: Record<string, string[]>;
-  fundBalance: number;
-  totalSpent: number;
-  hasFund: boolean;
-  backgroundImageUrl?: string;
-}
-
-// Gom hoạt động theo từng ngày → { "yyyy-MM-dd": ["timeactivity", ...] }
-// để widget chọn đúng lịch của mỗi ngày khi countdown sang ngày mới.
-function buildSchedule(activities: Activity[]): Record<string, string[]> {
-  const map: Record<string, string[]> = {};
-  for (const a of activities) {
-    if (!a.date) continue;
-    (map[a.date] ??= []).push(`${a.time || ''}${a.activity}`);
-  }
-  for (const d of Object.keys(map)) {
-    map[d].sort((x, y) => (x.split('')[0] || '99:99').localeCompare(y.split('')[0] || '99:99'));
-  }
-  return map;
-}
-
-// ── Exports ───────────────────────────────────────────────────────────────────
-
-export async function updateWidgetFromTrip(params: {
-  trip: Pick<Trip, 'id' | 'name' | 'emoji' | 'startDate' | 'endDate'>;
-  activities: Activity[];
-  expenses: TripExpense[];
-  funds: TripFund[];
-  fundPayments: TripFundPayment[];
-  media?: MediaItem[];
-}): Promise<void> {
+// ── Trip list (nguồn cho picker cấu hình widget) ────────────────────────────
+// Gọi mỗi khi tập trip đổi (tạo/xoá/sửa tên) — để danh sách trong "Chỉnh sửa
+// Widget" luôn khớp. Trip bị xoá → biến khỏi danh sách → widget đang chọn nó sẽ
+// hiện "Chưa chọn chuyến đi". Native cũng reload sau khi ghi danh sách.
+export async function setWidgetTripList(trips: Trip[]): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
-
-  const { trip, activities, expenses, funds, fundPayments, media } = params;
-
-  const today = new Date();
-  const todayStr = [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, '0'),
-    String(today.getDate()).padStart(2, '0'),
-  ].join('-');
-
-  let status: 'upcoming' | 'ongoing' | 'past' = 'past';
-  if (todayStr >= trip.startDate && todayStr <= trip.endDate) status = 'ongoing';
-  else if (todayStr < trip.startDate) status = 'upcoming';
-
-  const [sy, sm, sd] = trip.startDate.split('-').map(Number);
-  const startLocal = new Date(sy, sm - 1, sd);
-  const diffMs = startLocal.getTime() - new Date().setHours(0, 0, 0, 0);
-  const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-
-  const hasFund = funds.length > 0;
-  const totalFund = funds.reduce((s, f) => {
-    const paid = fundPayments.filter(p => p.fundId === f.id && p.paid).length;
-    return s + paid * f.amountPerPerson;
-  }, 0);
-  const fundBalance = totalFund - expenses.filter(e => e.fundId).reduce((s, e) => s + e.amount, 0);
-  const totalSpent  = expenses.reduce((s, e) => s + e.amount, 0);
-
-  let backgroundImageUrl: string | undefined;
-  if (media && media.length > 0) {
-    // Chọn theo NGÀY (giống edge function widget-data) → app-push & self-fetch
-    // dùng cùng 1 ảnh, đổi 1 lần/ngày, không nhấp nháy.
-    const dayIdx = Math.floor((Date.now() + 7 * 60 * 60 * 1000) / 86_400_000);
-    const item = media[dayIdx % media.length];
-    backgroundImageUrl = item.thumbnailUrl ?? item.publicUrl;
-  }
-
-  const payload: WidgetPayload = {
-    tripId: trip.id,
-    tripName: trip.name,
-    tripEmoji: trip.emoji,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-    daysLeft,
-    status,
-    // Encode as "time\u0001name" (time may be empty), sorted by time. The widget
-    // splits on \u0001 to render the time separately.
-    todayActivities: activities
-      .filter(a => a.date === todayStr)
-      .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'))
-      .map(a => `${a.time || ''}\u0001${a.activity}`),
-    schedule: buildSchedule(activities),
-    fundBalance,
-    totalSpent,
-    hasFund,
-    backgroundImageUrl,
-  };
-
-  console.log('[Widget] updateWidgetFromTrip — tripId:', trip.id, '| daysLeft:', daysLeft, '| hasFund:', hasFund);
   try {
-    await WidgetBridge.updateWidgetData(payload);
-    console.log('[Widget] updateWidgetData OK');
+    await WidgetBridge.setWidgetTripList({
+      trips: trips.map((t) => ({ id: t.id, name: t.name, emoji: t.emoji })),
+    });
+    console.log('[Widget] setWidgetTripList OK —', trips.length, 'trips');
   } catch (e) {
-    console.error('[Widget] updateWidgetData FAILED:', e);
+    console.error('[Widget] setWidgetTripList FAILED:', e);
   }
 }
 
-// ── Nearest-trip selection (must match the widget-data edge function) ─────────
-// The widget always shows the "nearest" trip: ongoing → soonest upcoming →
-// most recent past. Both the app fast-path and the edge function use this exact
-// rule so they never disagree on WHICH trip to display.
-export function findNearestTrip<T extends { startDate: string; endDate: string }>(
-  trips: T[],
-): T | null {
-  if (trips.length === 0) return null;
-  const now = new Date();
-  const today = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('-');
-  const sorted = [...trips].sort((a, b) => a.startDate.localeCompare(b.startDate));
-  return (
-    sorted.find(t => t.startDate <= today && t.endDate >= today) ??
-    sorted.find(t => t.startDate > today) ??
-    sorted[sorted.length - 1]
-  );
-}
-
-// Compute the nearest trip across ALL trips, fetch its data, and push it to the
-// widget. Use this whenever the trip set or any trip's dates change, so the
-// widget reflects the correct trip even when the edge function is unavailable.
-export async function syncNearestTripToWidget(trips: Trip[]): Promise<void> {
+// Kích widget tự fetch lại (dữ liệu trong 1 trip đổi: hoạt động/chi tiêu/quỹ/ảnh).
+export async function reloadWidget(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
-  const nearest = findNearestTrip(trips);
-  if (!nearest) return;
-  const [activities, expenses, funds, fundPayments, media] = await Promise.all([
-    fetchActivities(nearest.id).catch(() => [] as Activity[]),
-    fetchExpenses(nearest.id).catch(() => [] as TripExpense[]),
-    fetchFunds(nearest.id).catch(() => [] as TripFund[]),
-    fetchFundPayments(nearest.id).catch(() => [] as TripFundPayment[]),
-    fetchMediaItems(nearest.id).catch(() => [] as MediaItem[]),
-  ]);
-  await updateWidgetFromTrip({ trip: nearest, activities, expenses, funds, fundPayments, media });
+  try {
+    await WidgetBridge.reloadWidget();
+    console.log('[Widget] reloadWidget OK');
+  } catch (e) {
+    console.error('[Widget] reloadWidget FAILED:', e);
+  }
 }
 
 export async function setWidgetLoggedIn(): Promise<void> {
@@ -252,10 +143,8 @@ export async function adoptWidgetAuth(): Promise<boolean> {
 }
 
 // Reads the echo file that the widget extension writes after each getTimeline() call.
-// Call this ~5 seconds after updateWidgetFromTrip to diagnose whether the extension
-// can access the App Group and read widget_data.json.
 // echo="no_echo_yet"  → extension never ran OR can't access App Group (provisioning issue)
-// echo="file_missing" → extension has App Group but file not there yet
+// echo="file_missing" → extension has App Group but widget_data.json not found
 // echo="ok:..."       → extension read correctly — check widget rendering
 export async function readWidgetEcho(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
@@ -265,66 +154,11 @@ export async function readWidgetEcho(): Promise<void> {
     if (result.echo === 'no_echo_yet') {
       console.warn('[Widget Echo] ⚠️ Extension never wrote echo — check App Group provisioning in Xcode for TripWidgetExtension target');
     } else if (result.echo === 'file_missing') {
-      console.warn('[Widget Echo] ⚠️ Extension has App Group access but widget_data.json not found');
+      console.warn('[Widget Echo] ⚠️ Extension has App Group access but widget file not found');
     } else if (result.echo.startsWith('ok:')) {
       console.log('[Widget Echo] ✅ Extension read file successfully:', result.echo);
     }
   } catch (e) {
     console.error('[Widget Echo] FAILED:', e);
   }
-}
-
-// ── Legacy helper (kept for backward compat) ──────────────────────────────────
-
-export function buildWidgetData(params: {
-  trips: Array<{ id: string; name: string; emoji: string; startDate: string; endDate: string }>;
-  activities: Array<{ date: string; activity: string }>;
-  expenses: Array<{ amount: number; fundId?: string | null }>;
-  funds: Array<{ id: string; amountPerPerson: number }>;
-  fundPayments: Array<{ fundId: string; paid: boolean }>;
-}): Omit<WidgetPayload, 'backgroundImageUrl'> | null {
-  const today = new Date();
-  const todayStr = [
-    today.getFullYear(),
-    String(today.getMonth() + 1).padStart(2, '0'),
-    String(today.getDate()).padStart(2, '0'),
-  ].join('-');
-
-  const sorted = [...params.trips].sort((a, b) =>
-    new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-  );
-  const trip =
-    sorted.find(t => t.startDate <= todayStr && t.endDate >= todayStr) ??
-    sorted.find(t => t.startDate > todayStr) ??
-    sorted[sorted.length - 1];
-  if (!trip) return null;
-
-  let status: 'upcoming' | 'ongoing' | 'past' = 'past';
-  if (todayStr >= trip.startDate && todayStr <= trip.endDate) status = 'ongoing';
-  else if (todayStr < trip.startDate) status = 'upcoming';
-
-  const [ty, tm, td] = trip.startDate.split('-').map(Number);
-  const diffMs = new Date(ty, tm - 1, td).getTime() - today.setHours(0, 0, 0, 0);
-  const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-  const hasFund = params.funds.length > 0;
-  const totalFund = params.funds.reduce((s, f) => {
-    const paid = params.fundPayments.filter(p => p.fundId === f.id && p.paid).length;
-    return s + paid * f.amountPerPerson;
-  }, 0);
-  const fundBalance = totalFund - params.expenses.filter(e => e.fundId).reduce((s, e) => s + e.amount, 0);
-
-  const schedule: Record<string, string[]> = {};
-  for (const a of params.activities) {
-    if (!a.date) continue;
-    (schedule[a.date] ??= []).push(`\u0001${a.activity}`);
-  }
-
-  return {
-    tripId: trip.id, tripName: trip.name, tripEmoji: trip.emoji,
-    startDate: trip.startDate, endDate: trip.endDate,
-    daysLeft, status,
-    todayActivities: params.activities.filter(a => a.date === todayStr).map(a => `\u0001${a.activity}`),
-    schedule,
-    fundBalance, totalSpent: params.expenses.reduce((s, e) => s + e.amount, 0), hasFund,
-  };
 }

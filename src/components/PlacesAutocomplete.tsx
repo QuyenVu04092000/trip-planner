@@ -29,17 +29,17 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
         onClick={() => setMapOpen(true)}
         className={`${className ?? ''} flex items-center gap-2 cursor-pointer`}
       >
-        <MapPin size={14} className="flex-shrink-0 text-slate-300" />
+        <MapPin size={14} className="flex-shrink-0 text-dune" />
         {value ? (
-          <span className="flex-1 text-slate-700 truncate text-sm">{value}</span>
+          <span className="flex-1 text-ink truncate text-sm">{value}</span>
         ) : (
-          <span className="flex-1 text-slate-300 text-sm">{placeholder ?? 'Tìm địa điểm...'}</span>
+          <span className="flex-1 text-dune text-sm">{placeholder ?? 'Tìm địa điểm...'}</span>
         )}
         {value && (
           <button
             type="button"
             onClick={handleClear}
-            className="flex-shrink-0 text-slate-300 hover:text-slate-500 transition-colors"
+            className="flex-shrink-0 text-dune hover:text-stone transition-colors"
           >
             <X size={13} />
           </button>

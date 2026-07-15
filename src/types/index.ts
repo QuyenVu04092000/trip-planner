@@ -12,6 +12,13 @@ export interface Trip {
   updatedAt: string;
 }
 
+// Địa chỉ dự phòng: chỗ thay thế nếu địa điểm chính không đi được
+export interface BackupAddress {
+  address: string;
+  lat?: number | null;
+  lon?: number | null;
+}
+
 export interface Activity {
   id: string;
   tripId: string;
@@ -21,6 +28,7 @@ export interface Activity {
   address: string;
   lat?: number | null;   // toạ độ địa điểm (từ ô tìm kiếm) — để bản đồ/chỉ đường chính xác
   lon?: number | null;
+  backups?: BackupAddress[]; // địa chỉ dự phòng (không giới hạn số lượng)
   cost: string;
   notes: string;
   position: number;
@@ -118,7 +126,16 @@ export interface Suggestion {
   address: string;
   lat: number | null;
   lon: number | null;
-  photoUrl?: string | null;  // ảnh thật từ Foursquare (nếu có key); null → fallback ảnh-map
+  photoUrl?: string | null;  // ảnh thật (Wikimedia); null → fallback ảnh-map
+  bestTime?: string;         // sáng / chiều / tối / cả ngày
+  duration?: string;         // vd "1-2 giờ"
+  priceLevel?: string;       // miễn phí / ₫ / ₫₫ / ₫₫₫
+}
+
+// Tuỳ chọn cá nhân hoá gợi ý
+export interface SuggestionPrefs {
+  companions?: string;
+  interests?: string[];
 }
 
 export type AppPage =

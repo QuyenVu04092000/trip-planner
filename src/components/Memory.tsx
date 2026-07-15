@@ -104,13 +104,13 @@ function MediaCard({
     <div
       className={`bg-white rounded-xl overflow-hidden shadow-sm border transition-all duration-200 fade-in cursor-pointer group ${
         selected
-          ? 'border-blue-500 ring-2 ring-blue-400 ring-offset-1'
-          : 'border-slate-100 hover:border-slate-200 hover:shadow-md'
+          ? 'border-terra ring-2 ring-terra/40 ring-offset-1'
+          : 'border-sand hover:border-sand hover:shadow-md'
       }`}
       onClick={selectMode ? onToggleSelect : onClick}
     >
       {/* ── Thumbnail ── */}
-      <div className="relative overflow-hidden bg-slate-100" style={{ aspectRatio: '4/3' }}>
+      <div className="relative overflow-hidden bg-parchment" style={{ aspectRatio: '4/3' }}>
         {item.publicUrl ? (
           item.type === 'image' ? (
             <img
@@ -121,7 +121,7 @@ function MediaCard({
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
             />
           ) : (
-            <div className="w-full h-full bg-slate-800 flex items-center justify-center relative overflow-hidden">
+            <div className="w-full h-full bg-ink flex items-center justify-center relative overflow-hidden">
               {item.thumbnailUrl && item.thumbnailUrl !== item.publicUrl && (
                 <>
                   <img
@@ -142,8 +142,8 @@ function MediaCard({
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             {item.type === 'image'
-              ? <ImageIcon size={28} className="text-slate-300" />
-              : <Film size={28} className="text-slate-300" />}
+              ? <ImageIcon size={28} className="text-dune" />
+              : <Film size={28} className="text-dune" />}
           </div>
         )}
 
@@ -166,7 +166,7 @@ function MediaCard({
         {selectMode && (
           <div className="absolute top-2 left-2 z-20">
             <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shadow-md transition-all ${
-              selected ? 'bg-blue-500 border-blue-500' : 'bg-white/80 border-white/60 backdrop-blur-sm'
+              selected ? 'bg-terra border-terra' : 'bg-white/80 border-white/60 backdrop-blur-sm'
             }`}>
               {selected && <Check size={13} className="text-white" strokeWidth={3} />}
             </div>
@@ -175,7 +175,7 @@ function MediaCard({
 
         {/* Select dim overlay */}
         {selectMode && selected && (
-          <div className="absolute inset-0 bg-blue-500/15 z-10" />
+          <div className="absolute inset-0 bg-terra/15 z-10" />
         )}
       </div>
 
@@ -192,38 +192,38 @@ function MediaCard({
                   if (e.key === 'Enter') saveCaption();
                   if (e.key === 'Escape') { setCaption(item.caption); setEditingCaption(false); }
                 }}
-                className="flex-1 text-xs border-b border-blue-400 focus:outline-none bg-transparent text-slate-700 py-0.5"
+                className="flex-1 text-xs border-b border-terra focus:outline-none bg-transparent text-ink py-0.5"
                 placeholder="Thêm chú thích..."
               />
-              <button onClick={saveCaption} className="text-green-500 hover:text-green-600 flex-shrink-0">
+              <button onClick={saveCaption} className="text-moss hover:text-sage-dark flex-shrink-0">
                 <Check size={13} />
               </button>
-              <button onClick={() => { setCaption(item.caption); setEditingCaption(false); }} className="text-slate-400 hover:text-slate-600 flex-shrink-0">
+              <button onClick={() => { setCaption(item.caption); setEditingCaption(false); }} className="text-stone hover:text-stone flex-shrink-0">
                 <X size={13} />
               </button>
             </div>
           ) : (
             <div className="flex items-center gap-1 justify-between">
               <p
-                className="text-xs text-slate-500 truncate flex-1 cursor-text"
+                className="text-xs text-stone truncate flex-1 cursor-text"
                 onClick={() => setEditingCaption(true)}
               >
                 {item.caption || (
-                  <span className="text-slate-300 italic">Thêm chú thích...</span>
+                  <span className="text-dune italic">Thêm chú thích...</span>
                 )}
               </p>
               {/* Always-visible action buttons */}
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 <button
                   onClick={() => setEditingCaption(true)}
-                  className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                  className="w-6 h-6 rounded-md flex items-center justify-center text-dune hover:text-terra hover:bg-terra-pale transition-colors"
                   title="Sửa chú thích"
                 >
                   <Edit2 size={11} />
                 </button>
                 <button
                   onClick={onDelete}
-                  className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                  className="w-6 h-6 rounded-md flex items-center justify-center text-dune hover:text-wine hover:bg-wine-pale transition-colors"
                   title="Xóa"
                 >
                   <Trash2 size={11} />
@@ -366,8 +366,8 @@ function Lightbox({
                     loading="lazy"
                   />
                 ) : (
-                  <div className="w-full h-full bg-slate-700 flex items-center justify-center">
-                    <Film size={12} className="text-slate-400" />
+                  <div className="w-full h-full bg-ink-light flex items-center justify-center">
+                    <Film size={12} className="text-stone" />
                   </div>
                 )}
               </button>
@@ -545,18 +545,18 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
     <div className="flex flex-col h-full relative">
 
       {/* ── Toolbar ── */}
-      <div className="bg-white border-b border-slate-100 sticky top-0 z-10">
+      <div className="bg-white border-b border-sand sticky top-0 z-10">
         {selectMode ? (
           /* Select mode toolbar */
           <div className="px-4 py-3 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-700">
+                <p className="text-sm font-semibold text-ink">
                   {selectedCount > 0 ? `Đã chọn ${selectedCount}` : 'Chọn ảnh / video'}
                 </p>
                 <button
                   onClick={toggleSelectAll}
-                  className="text-xs text-blue-500 hover:text-blue-600 font-medium transition-colors"
+                  className="text-xs text-terra hover:text-terra-dark font-medium transition-colors"
                 >
                   {allFilteredSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${filtered.length})`}
                 </button>
@@ -565,14 +565,14 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
                 <button
                   onClick={handleDeleteSelected}
                   disabled={selectedCount === 0 || deleting}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-rose-500 hover:bg-rose-600 disabled:opacity-40 text-white transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-wine hover:bg-wine-dark disabled:opacity-40 text-white transition-colors"
                 >
                   <Trash2 size={14} />
                   {deleting ? 'Xóa...' : `Xóa${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
                 </button>
                 <button
                   onClick={exitSelectMode}
-                  className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+                  className="w-9 h-9 flex items-center justify-center rounded-xl border border-sand text-stone hover:bg-paper transition-colors"
                 >
                   <X size={16} />
                 </button>
@@ -583,13 +583,13 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
           /* Normal toolbar */
           <div className="px-4 py-3 flex items-center justify-between gap-3">
             {/* Type filter */}
-            <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-1 flex-shrink-0">
+            <div className="flex items-center gap-0.5 bg-parchment rounded-lg p-1 flex-shrink-0">
               {(['all', 'image', 'video'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                    filter === f ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'
+                    filter === f ? 'bg-white shadow-sm text-ink' : 'text-stone hover:text-ink'
                   }`}
                 >
                   {f === 'all' ? `Tất cả · ${items.length}` : f === 'image' ? `Ảnh · ${imageCount}` : `Video · ${videoCount}`}
@@ -601,7 +601,7 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
               {items.length > 0 && (
                 <button
                   onClick={() => setSelectMode(true)}
-                  className="w-9 h-9 sm:w-auto sm:px-3 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center justify-center"
+                  className="w-9 h-9 sm:w-auto sm:px-3 rounded-xl text-sm font-medium text-stone hover:bg-parchment border border-sand transition-colors flex items-center justify-center"
                 >
                   <CheckSquare size={14} className="sm:mr-1.5" />
                   <span className="hidden sm:inline">Chọn</span>
@@ -610,7 +610,7 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!!uploadProgress}
-                className="w-9 h-9 sm:w-auto sm:px-4 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition-colors"
+                className="w-9 h-9 sm:w-auto sm:px-4 flex items-center justify-center gap-2 bg-terra hover:bg-terra-dark disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 <Upload size={14} />
                 <span className="hidden sm:inline">
@@ -632,8 +632,8 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
               onClick={() => setDateFilter(null)}
               className={`flex-shrink-0 h-7 px-3 rounded-full text-xs font-semibold transition-all ${
                 dateFilter === null
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  ? 'bg-terra text-white shadow-sm'
+                  : 'bg-parchment text-stone hover:bg-sand'
               }`}
             >
               Tất cả
@@ -648,19 +648,19 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
                   onClick={() => !isEmpty && setDateFilter(isActive ? null : day)}
                   className={`flex-shrink-0 h-7 flex items-center gap-1.5 px-3 rounded-full text-xs font-semibold transition-all ${
                     isActive
-                      ? 'bg-blue-600 text-white shadow-sm'
+                      ? 'bg-terra text-white shadow-sm'
                       : isEmpty
-                        ? 'bg-slate-50 text-slate-300 cursor-default border border-dashed border-slate-200'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        ? 'bg-paper text-dune cursor-default border border-dashed border-sand'
+                        : 'bg-parchment text-stone hover:bg-sand'
                   }`}
                 >
                   <span>Ngày {i + 1}</span>
-                  <span className={`text-[10px] ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
+                  <span className={`text-[10px] ${isActive ? 'text-white/70' : 'text-stone'}`}>
                     {fmtDayShort(day)}
                   </span>
                   {count > 0 && (
                     <span className={`text-[10px] font-bold rounded-full px-1 ${
-                      isActive ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-600'
+                      isActive ? 'bg-white/25 text-white' : 'bg-sand text-stone'
                     }`}>
                       {count}
                     </span>
@@ -673,13 +673,13 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
                 onClick={() => setDateFilter(dateFilter === 'untagged' ? null : 'untagged')}
                 className={`flex-shrink-0 h-7 flex items-center gap-1.5 px-3 rounded-full text-xs font-semibold transition-all ${
                   dateFilter === 'untagged'
-                    ? 'bg-slate-700 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    ? 'bg-ink-light text-white shadow-sm'
+                    : 'bg-parchment text-stone hover:bg-sand'
                 }`}
               >
                 Chưa có ngày
                 <span className={`text-[10px] font-bold rounded-full px-1 ${
-                  dateFilter === 'untagged' ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-600'
+                  dateFilter === 'untagged' ? 'bg-white/25 text-white' : 'bg-sand text-stone'
                 }`}>
                   {untaggedCount}
                 </span>
@@ -691,7 +691,7 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
 
       {/* Duplicate warning toast */}
       {dupWarning && (
-        <div className="mx-4 mt-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm flex items-start gap-2.5">
+        <div className="mx-4 mt-3 px-4 py-3 bg-gold-pale border border-gold/40 rounded-xl text-gold-dark text-sm flex items-start gap-2.5">
           <span className="text-base leading-none mt-0.5">🔁</span>
           <span>{dupWarning}</span>
         </div>
@@ -699,7 +699,7 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
 
       {/* Size warning toast */}
       {sizeWarning && (
-        <div className="mx-4 mt-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-start gap-2.5">
+        <div className="mx-4 mt-3 px-4 py-3 bg-wine-pale border border-wine/25 rounded-xl text-wine-dark text-sm flex items-start gap-2.5">
           <span className="text-base leading-none mt-0.5">⚠️</span>
           <span>{sizeWarning}</span>
         </div>
@@ -711,18 +711,18 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
           <div className="bg-white rounded-2xl px-8 py-6 shadow-2xl flex flex-col items-center gap-4 min-w-[220px]">
             <div className="text-3xl">{uploadProgress.phase === 'compressing' ? '🗜️' : '📤'}</div>
             <div className="text-center">
-              <p className="font-semibold text-slate-700 text-sm mb-1">
+              <p className="font-semibold text-ink text-sm mb-1">
                 {uploadProgress.phase === 'compressing' ? 'Đang nén ảnh...' : 'Đang tải lên...'}
               </p>
-              <p className="text-slate-400 text-xs">
+              <p className="text-stone text-xs">
                 {uploadProgress.phase === 'uploading'
                   ? `${uploadProgress.current} / ${uploadProgress.total} tệp xong`
                   : `${uploadProgress.total} tệp`}
               </p>
             </div>
-            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div className="w-full bg-parchment rounded-full h-1.5 overflow-hidden">
               <div
-                className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                className="bg-terra h-1.5 rounded-full transition-all duration-300"
                 style={{
                   width: uploadProgress.phase === 'compressing'
                     ? '100%'
@@ -737,7 +737,7 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
 
       {/* ── Content area ── */}
       <div
-        className={`flex-1 overflow-auto p-4 transition-colors duration-200 ${dragOver ? 'bg-blue-50' : ''}`}
+        className={`flex-1 overflow-auto p-4 transition-colors duration-200 ${dragOver ? 'bg-terra-pale' : ''}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
@@ -748,28 +748,28 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
             <div
               className={`w-full max-w-sm border-2 border-dashed rounded-2xl p-10 flex flex-col items-center gap-4 text-center cursor-pointer transition-all ${
                 dragOver
-                  ? 'border-blue-400 bg-blue-50'
-                  : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/80'
+                  ? 'border-terra bg-terra-pale'
+                  : 'border-sand hover:border-terra/40 hover:bg-paper/80'
               }`}
               onClick={() => fileInputRef.current?.click()}
             >
-              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center">
+              <div className="w-16 h-16 bg-parchment rounded-2xl flex items-center justify-center">
                 {filter === 'video'
-                  ? <Film size={28} className="text-slate-300" />
-                  : <ImageIcon size={28} className="text-slate-300" />}
+                  ? <Film size={28} className="text-dune" />
+                  : <ImageIcon size={28} className="text-dune" />}
               </div>
               <div>
-                <p className="font-semibold text-slate-600 mb-1 text-[15px]">
+                <p className="font-semibold text-stone mb-1 text-[15px]">
                   {items.length === 0 ? 'Thêm ảnh & video' : 'Không có kết quả'}
                 </p>
-                <p className="text-slate-400 text-sm leading-relaxed">
+                <p className="text-stone text-sm leading-relaxed">
                   {items.length === 0
                     ? 'Kéo thả hoặc nhấp để chọn tệp từ thiết bị'
                     : 'Thử chọn bộ lọc khác'}
                 </p>
               </div>
               {items.length === 0 && (
-                <p className="text-xs text-slate-300">JPG · PNG · MP4 · MOV</p>
+                <p className="text-xs text-dune">JPG · PNG · MP4 · MOV</p>
               )}
             </div>
           </div>
@@ -793,7 +793,7 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
             {!selectMode && (
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-300 hover:text-blue-400 hover:border-blue-300 hover:bg-blue-50/50 cursor-pointer transition-all"
+                className="border-2 border-dashed border-sand rounded-xl flex flex-col items-center justify-center gap-2 text-dune hover:text-terra hover:border-terra/40 hover:bg-terra-pale/50 cursor-pointer transition-all"
                 style={{ aspectRatio: '4/3' }}
               >
                 <Upload size={20} />

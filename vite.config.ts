@@ -11,4 +11,5 @@ const base = process.env.GITHUB_REPOSITORY
 export default defineConfig({
   base,
   plugins: [react()],
+  server: { port: 5179 },
 });

@@ -120,7 +120,7 @@ function TripCardCover({ trip, onDelete }: CoverProps) {
             {/* Name row */}
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xl leading-none flex-shrink-0">{trip.emoji}</span>
-              <h3 className="font-bold text-white text-[15px] leading-tight truncate" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+              <h3 className="font-serif font-semibold text-white text-[16px] leading-tight truncate" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
                 {trip.name}
               </h3>
             </div>
@@ -128,7 +128,7 @@ function TripCardCover({ trip, onDelete }: CoverProps) {
             <div className="flex items-center gap-2.5 flex-wrap">
               {trip.destination && (
                 <span className="flex items-center gap-1 text-white/80 text-xs truncate max-w-[140px]">
-                  <MapPin size={10} className="flex-shrink-0 text-rose-300" />
+                  <MapPin size={10} className="flex-shrink-0 text-wine-pale" />
                   {trip.destination}
                 </span>
               )}
@@ -143,21 +143,21 @@ function TripCardCover({ trip, onDelete }: CoverProps) {
           {/* Countdown / days badge */}
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
             {countdown.type === 'today' && (
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-400/90 text-white shadow-sm animate-pulse">
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-moss/90 text-white shadow-sm animate-pulse">
                 Hôm nay! 🎉
               </span>
             )}
             {countdown.type === 'ongoing' && (
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/80 text-white shadow-sm">
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-sage-dark/80 text-white shadow-sm">
                 Đang diễn ra
               </span>
             )}
             {countdown.type === 'upcoming' && (
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full shadow-sm ${
                 countdown.days <= 3
-                  ? 'bg-amber-400/90 text-white'
+                  ? 'bg-gold/90 text-white'
                   : countdown.days <= 7
-                    ? 'bg-orange-400/80 text-white'
+                    ? 'bg-terra/80 text-white'
                     : 'bg-white/20 text-white border border-white/20 backdrop-blur-sm'
               }`}>
                 {countdown.label}
@@ -386,9 +386,9 @@ export default function TripList({
   const iconRotation = pullProgress * 180;
 
   return (
-    <div className="h-[100svh] bg-slate-50 flex flex-col overflow-hidden">
+    <div className="h-[100svh] bg-paper flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="bg-zinc-900 sticky top-0 z-30 border-b border-zinc-800 pt-safe flex-shrink-0">
+      <header className="bg-ink sticky top-0 z-30 border-b border-ink-light pt-safe flex-shrink-0">
         <div className="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0">
@@ -398,7 +398,7 @@ export default function TripList({
               <h1 className="font-bold text-white text-[17px] leading-tight tracking-tight">
                 TripMemo
               </h1>
-              <p className="text-[11px] text-zinc-400 font-medium leading-none mt-0.5 hidden sm:block">
+              <p className="text-[11px] text-dune font-medium leading-none mt-0.5 hidden sm:block">
                 Lên kế hoạch & lưu kỷ niệm
               </p>
             </div>
@@ -406,7 +406,7 @@ export default function TripList({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowCreate(true)}
-              className="flex items-center justify-center gap-2 bg-white text-zinc-900 hover:bg-zinc-100 w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl text-sm font-semibold transition-all hover:-translate-y-0.5 active:translate-y-0 shadow-sm"
+              className="flex items-center justify-center gap-2 bg-white text-ink hover:bg-parchment w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl text-sm font-semibold transition-all hover:-translate-y-0.5 active:translate-y-0 shadow-sm"
             >
               <Plus size={15} />
               <span className="hidden sm:inline">Chuyến đi mới</span>
@@ -417,10 +417,10 @@ export default function TripList({
               disabled={pushState === 'loading'}
               className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all border ${
                 pushState === 'subscribed'
-                  ? 'bg-amber-400/20 border-amber-400/40 text-amber-300 hover:bg-amber-400/30'
+                  ? 'bg-gold/20 border-gold/40 text-gold-pale hover:bg-gold/30'
                   : pushState === 'unsupported'
-                    ? 'bg-white/5 border-white/10 text-zinc-600 cursor-not-allowed'
-                    : 'bg-white/10 hover:bg-white/20 text-zinc-400 hover:text-white border-white/10'
+                    ? 'bg-white/5 border-white/10 text-stone cursor-not-allowed'
+                    : 'bg-white/10 hover:bg-white/20 text-dune hover:text-white border-white/10'
               }`}
             >
               {pushState === 'subscribed'
@@ -432,14 +432,14 @@ export default function TripList({
             <button
               onClick={() => setShowProfile(true)}
               title="Hồ sơ của bạn"
-              className="w-9 h-9 bg-white/10 hover:bg-white/20 text-zinc-400 hover:text-white border border-white/10 rounded-xl flex items-center justify-center transition-all"
+              className="w-9 h-9 bg-white/10 hover:bg-white/20 text-dune hover:text-white border border-white/10 rounded-xl flex items-center justify-center transition-all"
             >
               <UserCircle size={15} />
             </button>
             <button
               onClick={onLogout}
               title="Đăng xuất"
-              className="w-9 h-9 bg-white/10 hover:bg-white/20 text-zinc-400 hover:text-white border border-white/10 rounded-xl flex items-center justify-center transition-all"
+              className="w-9 h-9 bg-white/10 hover:bg-white/20 text-dune hover:text-white border border-white/10 rounded-xl flex items-center justify-center transition-all"
             >
               <LogOut size={15} />
             </button>
@@ -468,7 +468,7 @@ export default function TripList({
         >
           <div
             className={`w-9 h-9 rounded-full flex items-center justify-center shadow-md transition-colors duration-150 ${
-              pullProgress >= 1 || refreshing ? 'bg-blue-500 text-white' : 'bg-white text-slate-400'
+              pullProgress >= 1 || refreshing ? 'bg-terra text-white' : 'bg-white text-stone'
             }`}
             style={{
               transform: refreshing ? 'none' : `rotate(${iconRotation}deg)`,
@@ -483,16 +483,16 @@ export default function TripList({
         {trips.length === 0 ? (
           <div className="text-center py-20 fade-in">
             <div className="text-8xl mb-6">🗺️</div>
-            <h2 className="text-2xl font-bold text-slate-700 mb-3">
+            <h2 className="text-2xl font-bold text-ink mb-3">
               Chưa có chuyến đi nào
             </h2>
-            <p className="text-slate-400 mb-8 max-w-sm mx-auto text-sm leading-relaxed">
+            <p className="text-stone mb-8 max-w-sm mx-auto text-sm leading-relaxed">
               Bắt đầu lên kế hoạch cho chuyến đi tiếp theo của bạn và lưu giữ
               những kỷ niệm đáng nhớ!
             </p>
             <button
               onClick={() => setShowCreate(true)}
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium transition-colors"
+              className="inline-flex items-center gap-2 bg-terra hover:bg-terra-dark text-white px-6 py-3 rounded-xl font-medium transition-colors"
             >
               <Plus size={18} />
               Tạo chuyến đi đầu tiên
@@ -501,10 +501,10 @@ export default function TripList({
         ) : (
           <>
             <div className="mb-6">
-              <h2 className="text-xl font-bold text-slate-800">
+              <h2 className="text-xl font-bold text-ink">
                 Chuyến đi của tôi
               </h2>
-              <p className="text-sm text-slate-400 mt-1">
+              <p className="text-sm text-stone mt-1">
                 {trips.length} chuyến đi
               </p>
             </div>
@@ -526,7 +526,7 @@ export default function TripList({
               {/* Add new card */}
               <button
                 onClick={() => setShowCreate(true)}
-                className="border-2 border-dashed border-slate-200 rounded-2xl min-h-[200px] flex flex-col items-center justify-center gap-2 text-slate-400 hover:text-blue-500 hover:border-blue-300 hover:bg-blue-50/50 transition-all"
+                className="border-2 border-dashed border-sand rounded-2xl min-h-[200px] flex flex-col items-center justify-center gap-2 text-stone hover:text-terra hover:border-terra/40 hover:bg-terra-pale/50 transition-all"
               >
                 <Plus size={28} />
                 <span className="text-sm font-medium">Thêm chuyến đi</span>
@@ -549,7 +549,7 @@ export default function TripList({
 
       {/* Notification toast */}
       {notifToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-zinc-800 text-white text-sm px-4 py-3 rounded-2xl shadow-xl fade-in max-w-xs text-center">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-ink-light text-white text-sm px-4 py-3 rounded-2xl shadow-xl fade-in max-w-xs text-center">
           {notifToast}
         </div>
       )}
@@ -559,23 +559,23 @@ export default function TripList({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm fade-in shadow-2xl">
             <div className="text-3xl mb-3">🗑️</div>
-            <h3 className="font-bold text-slate-800 text-lg mb-2">
+            <h3 className="font-bold text-ink text-lg mb-2">
               Xóa chuyến đi?
             </h3>
-            <p className="text-slate-500 text-sm mb-5">
+            <p className="text-stone text-sm mb-5">
               Toàn bộ kế hoạch và ảnh/video của chuyến đi này sẽ bị xóa vĩnh
               viễn.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setDeletingId(null)}
-                className="flex-1 border border-slate-200 rounded-xl py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                className="flex-1 border border-sand rounded-xl py-2.5 text-sm font-medium text-stone hover:bg-paper"
               >
                 Hủy
               </button>
               <button
                 onClick={confirmDelete}
-                className="flex-1 bg-rose-500 hover:bg-rose-600 text-white rounded-xl py-2.5 text-sm font-medium"
+                className="flex-1 bg-wine hover:bg-wine-dark text-white rounded-xl py-2.5 text-sm font-medium"
               >
                 Xóa
               </button>

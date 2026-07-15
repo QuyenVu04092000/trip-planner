@@ -160,6 +160,7 @@ function rowToActivity(r: Record<string, unknown>): Activity {
     address: (r.address as string) ?? '',
     lat: (r.lat as number) ?? null,
     lon: (r.lon as number) ?? null,
+    backups: (r.backups as Activity['backups']) ?? [],
     cost: (r.cost as string) ?? '',
     notes: (r.notes as string) ?? '',
     position: (r.position as number) ?? 0,
@@ -183,6 +184,7 @@ export async function createActivity(
     id, trip_id: tripId,
     date: fields.date, time: fields.time, activity: fields.activity,
     address: fields.address, lat: fields.lat ?? null, lon: fields.lon ?? null,
+    backups: fields.backups ?? [],
     cost: fields.cost, notes: fields.notes,
     position: fields.position,
   };
@@ -194,9 +196,21 @@ export async function createActivity(
 export async function fetchSuggestions(
   tripId: string,
   destination: string,
-  refresh = false,
+  opts: {
+    refresh?: boolean;
+    companions?: string;
+    interests?: string[];
+    exclude?: string[]; // tên hoạt động đã có → AI không gợi ý lại
+  } = {},
 ): Promise<Suggestion[]> {
-  return api.post<Suggestion[]>('/suggestions', { tripId, destination, refresh });
+  return api.post<Suggestion[]>('/suggestions', {
+    tripId,
+    destination,
+    refresh: opts.refresh ?? false,
+    companions: opts.companions,
+    interests: opts.interests,
+    exclude: opts.exclude,
+  });
 }
 
 export async function updateActivity(

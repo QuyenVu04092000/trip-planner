@@ -16,12 +16,12 @@ function HeroPanel() {
   ];
 
   return (
-    <div className="hidden lg:flex lg:w-[52%] relative flex-col justify-between p-12 overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700">
+    <div className="hidden lg:flex lg:w-[52%] relative flex-col justify-between p-12 overflow-hidden bg-ink">
 
       {/* Decorative blobs */}
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-indigo-400/20 rounded-full blur-2xl pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
       {/* Top: logo */}
       <div className="relative flex items-center gap-3">
@@ -34,7 +34,7 @@ function HeroPanel() {
       {/* Middle: headline + features */}
       <div className="relative space-y-10">
         <div>
-          <h2 className="text-4xl font-bold text-white leading-tight tracking-tight">
+          <h2 className="font-serif text-4xl font-semibold text-white leading-tight">
             Mỗi chuyến đi<br />
             là một<br />
             <span className="text-white/70">câu chuyện.</span>
@@ -119,14 +119,14 @@ export default function AuthPage() {
       <HeroPanel />
 
       {/* Right form panel */}
-      <div className="flex-1 flex flex-col bg-slate-50 min-h-screen lg:min-h-0">
+      <div className="flex-1 flex flex-col bg-paper min-h-screen lg:min-h-0">
 
         {/* Mobile-only top bar */}
-        <div className="lg:hidden flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 bg-white pt-safe">
+        <div className="lg:hidden flex items-center gap-2.5 px-5 py-4 border-b border-sand bg-white pt-safe">
           <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0">
             <img src="/icon-192.png" alt="TripMemo" className="w-full h-full object-cover" />
           </div>
-          <span className="font-bold text-slate-800 text-base tracking-tight">TripMemo</span>
+          <span className="font-bold text-ink text-base tracking-tight">TripMemo</span>
         </div>
 
         {/* Form area */}
@@ -135,10 +135,10 @@ export default function AuthPage() {
 
             {/* Heading */}
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+              <h2 className="font-serif text-2xl font-semibold text-ink">
                 {mode === 'login' ? 'Chào mừng trở lại 👋' : 'Tạo tài khoản mới'}
               </h2>
-              <p className="text-slate-400 text-sm mt-1.5">
+              <p className="text-stone text-sm mt-1.5">
                 {mode === 'login'
                   ? 'Đăng nhập để tiếp tục lên kế hoạch.'
                   : 'Miễn phí, không cần thẻ tín dụng.'}
@@ -146,15 +146,15 @@ export default function AuthPage() {
             </div>
 
             {/* Tab */}
-            <div className="flex bg-slate-100 rounded-xl p-1 mb-7 gap-1">
+            <div className="flex bg-parchment rounded-xl p-1 mb-7 gap-1">
               {(['login', 'signup'] as Mode[]).map((m) => (
                 <button
                   key={m}
                   onClick={() => switchMode(m)}
                   className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
                     mode === m
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-400 hover:text-slate-600'
+                      ? 'bg-white text-ink shadow-sm'
+                      : 'text-stone hover:text-stone'
                   }`}
                 >
                   {m === 'login' ? 'Đăng nhập' : 'Đăng ký'}
@@ -167,11 +167,11 @@ export default function AuthPage() {
 
               {/* Email field */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest uppercase">
+                <label className="block text-xs font-semibold text-stone tracking-widest uppercase">
                   Email
                 </label>
                 <div className="relative">
-                  <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone pointer-events-none" />
                   <input
                     type="email"
                     value={email}
@@ -179,18 +179,18 @@ export default function AuthPage() {
                     placeholder="you@example.com"
                     required
                     autoComplete="email"
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all shadow-sm"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-sand bg-white text-ink placeholder-dune text-sm focus:outline-none focus:ring-2 focus:ring-terra/20 focus:border-terra transition-all shadow-sm"
                   />
                 </div>
               </div>
 
               {/* Password field */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest uppercase">
+                <label className="block text-xs font-semibold text-stone tracking-widest uppercase">
                   Mật khẩu
                 </label>
                 <div className="relative">
-                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone pointer-events-none" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -199,12 +199,12 @@ export default function AuthPage() {
                     required
                     minLength={6}
                     autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                    className="w-full pl-10 pr-11 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all shadow-sm"
+                    className="w-full pl-10 pr-11 py-3 rounded-xl border border-sand bg-white text-ink placeholder-dune text-sm focus:outline-none focus:ring-2 focus:ring-terra/20 focus:border-terra transition-all shadow-sm"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(v => !v)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone hover:text-stone transition-colors"
                     tabIndex={-1}
                     aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
@@ -215,7 +215,7 @@ export default function AuthPage() {
 
               {/* Error banner */}
               {error && (
-                <div className="flex items-start gap-2.5 px-3.5 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                <div className="flex items-start gap-2.5 px-3.5 py-3 bg-wine-pale border border-wine/25 rounded-xl text-wine text-sm">
                   <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
                   <span>{error}</span>
                 </div>
@@ -223,7 +223,7 @@ export default function AuthPage() {
 
               {/* Success banner */}
               {success && (
-                <div className="flex items-start gap-2.5 px-3.5 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-sm">
+                <div className="flex items-start gap-2.5 px-3.5 py-3 bg-sage-pale border border-sage/50 rounded-xl text-sage-dark text-sm">
                   <CheckCircle size={15} className="flex-shrink-0 mt-0.5" />
                   <span>{success}</span>
                 </div>
@@ -234,7 +234,7 @@ export default function AuthPage() {
                 type="submit"
                 disabled={loading}
                 className="relative w-full py-3 mt-1 rounded-xl font-semibold text-sm text-white overflow-hidden group disabled:opacity-60 transition-all duration-200 active:scale-[0.98]"
-                style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 60%, #8b5cf6 100%)' }}
+                style={{ background: '#C4622D' }}
               >
                 <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors duration-200" />
                 <span className="relative flex items-center justify-center gap-2">
@@ -257,11 +257,11 @@ export default function AuthPage() {
             </form>
 
             {/* Switch mode text link */}
-            <p className="text-center text-slate-400 text-sm mt-6">
+            <p className="text-center text-stone text-sm mt-6">
               {mode === 'login' ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? '}
               <button
                 onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
-                className="text-blue-500 hover:text-blue-600 font-semibold transition-colors"
+                className="text-terra hover:text-terra-dark font-semibold transition-colors"
               >
                 {mode === 'login' ? 'Đăng ký miễn phí' : 'Đăng nhập'}
               </button>
@@ -270,8 +270,8 @@ export default function AuthPage() {
         </div>
 
         {/* Bottom footer */}
-        <div className="px-5 py-4 border-t border-slate-100 text-center lg:text-right lg:px-10">
-          <p className="text-slate-300 text-xs">
+        <div className="px-5 py-4 border-t border-sand text-center lg:text-right lg:px-10">
+          <p className="text-dune text-xs">
             © 2025 TripMemo · Dữ liệu được mã hóa & bảo mật
           </p>
         </div>

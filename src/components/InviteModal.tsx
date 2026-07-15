@@ -17,8 +17,8 @@ function avatarInitials(email: string) {
 
 function avatarColor(email: string) {
   const colors = [
-    'bg-blue-400', 'bg-violet-400', 'bg-pink-400',
-    'bg-amber-400', 'bg-emerald-400', 'bg-cyan-400',
+    'bg-terra', 'bg-plum', 'bg-clay',
+    'bg-gold', 'bg-moss', 'bg-slateblue',
   ];
   let hash = 0;
   for (const c of email) hash = (hash * 31 + c.charCodeAt(0)) & 0xfffff;
@@ -82,12 +82,12 @@ export default function InviteModal({ trip, currentUserId, isOwner, onClose, onL
       <div className="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-2xl shadow-xl overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-5 pb-3 border-b border-slate-100">
+        <div className="flex items-center justify-between px-4 pt-5 pb-3 border-b border-sand">
           <div className="flex items-center gap-2">
-            <Users size={18} className="text-blue-500" />
-            <h2 className="font-semibold text-slate-800">Thành viên</h2>
+            <Users size={18} className="text-terra" />
+            <h2 className="font-semibold text-ink">Thành viên</h2>
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-stone hover:bg-parchment">
             <X size={16} />
           </button>
         </div>
@@ -97,12 +97,12 @@ export default function InviteModal({ trip, currentUserId, isOwner, onClose, onL
           {/* Invite link — chỉ owner mới thấy */}
           {isOwner && (
             <div className="space-y-2">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Mời người khác</p>
+              <p className="text-xs font-medium text-stone uppercase tracking-wide">Mời người khác</p>
               {!inviteUrl ? (
                 <button
                   onClick={handleGenerateLink}
                   disabled={generatingLink}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl active:bg-blue-700 transition-colors disabled:opacity-60"
+                  className="w-full flex items-center justify-center gap-2 bg-terra text-white text-sm font-semibold py-2.5 rounded-xl active:bg-terra-dark transition-colors disabled:opacity-60"
                 >
                   {generatingLink
                     ? <><Loader2 size={14} className="animate-spin" /> Đang tạo link...</>
@@ -110,13 +110,13 @@ export default function InviteModal({ trip, currentUserId, isOwner, onClose, onL
                   }
                 </button>
               ) : (
-                <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-200">
-                  <p className="flex-1 text-xs text-slate-600 truncate">{inviteUrl}</p>
+                <div className="flex items-center gap-2 bg-paper rounded-xl px-3 py-2.5 border border-sand">
+                  <p className="flex-1 text-xs text-stone truncate">{inviteUrl}</p>
                   <button
                     onClick={handleCopy}
-                    className="flex-shrink-0 flex items-center gap-1 text-xs font-semibold text-blue-600 active:text-blue-800"
+                    className="flex-shrink-0 flex items-center gap-1 text-xs font-semibold text-terra-dark active:text-terra-dark"
                   >
-                    {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                    {copied ? <Check size={14} className="text-moss" /> : <Copy size={14} />}
                     {copied ? 'Đã copy' : 'Copy'}
                   </button>
                 </div>
@@ -126,13 +126,13 @@ export default function InviteModal({ trip, currentUserId, isOwner, onClose, onL
 
           {/* Members list */}
           <div className="space-y-2">
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+            <p className="text-xs font-medium text-stone uppercase tracking-wide">
               Danh sách ({members.length})
             </p>
 
             {loadingMembers ? (
               <div className="flex items-center justify-center py-4">
-                <Loader2 size={20} className="text-slate-300 animate-spin" />
+                <Loader2 size={20} className="text-dune animate-spin" />
               </div>
             ) : (
               <div className="space-y-1">
@@ -142,10 +142,10 @@ export default function InviteModal({ trip, currentUserId, isOwner, onClose, onL
                       {avatarInitials(member.userEmail)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-700 truncate">{member.userEmail}</p>
+                      <p className="text-sm text-ink truncate">{member.userEmail}</p>
                     </div>
                     {member.role === 'owner' && (
-                      <span className="flex items-center gap-1 text-xs text-amber-500 font-medium flex-shrink-0">
+                      <span className="flex items-center gap-1 text-xs text-gold font-medium flex-shrink-0">
                         <Crown size={12} /> Owner
                       </span>
                     )}
@@ -154,7 +154,7 @@ export default function InviteModal({ trip, currentUserId, isOwner, onClose, onL
                       <button
                         onClick={() => handleRemove(member)}
                         disabled={removingId === member.id}
-                        className="flex-shrink-0 p-1 text-slate-300 hover:text-red-400 transition-colors"
+                        className="flex-shrink-0 p-1 text-dune hover:text-wine transition-colors"
                       >
                         {removingId === member.id
                           ? <Loader2 size={14} className="animate-spin" />
@@ -173,7 +173,7 @@ export default function InviteModal({ trip, currentUserId, isOwner, onClose, onL
             <button
               onClick={handleLeave}
               disabled={leaving}
-              className="w-full flex items-center justify-center gap-2 text-red-500 text-sm font-medium py-2.5 rounded-xl border border-red-100 hover:bg-red-50 transition-colors disabled:opacity-60"
+              className="w-full flex items-center justify-center gap-2 text-wine text-sm font-medium py-2.5 rounded-xl border border-wine/20 hover:bg-wine-pale transition-colors disabled:opacity-60"
             >
               {leaving
                 ? <><Loader2 size={14} className="animate-spin" /> Đang rời...</>

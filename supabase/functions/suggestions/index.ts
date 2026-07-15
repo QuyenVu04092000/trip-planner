@@ -12,12 +12,22 @@ interface RawSuggestion {
   category: string;
   description: string;
   area?: string;
+  bestTime?: string;   // sáng / chiều / tối / cả ngày
+  duration?: string;   // vd "1-2 giờ"
+  priceLevel?: string; // miễn phí / ₫ / ₫₫ / ₫₫₫
 }
 interface Suggestion extends RawSuggestion {
   address: string;
   lat: number | null;
   lon: number | null;
   photoUrl: string | null;
+}
+
+// Tuỳ chọn cá nhân hoá từ client
+interface Prefs {
+  companions?: string;   // một mình / cặp đôi / gia đình / nhóm bạn
+  interests?: string[];  // ăn uống, cà phê, thiên nhiên, sống ảo, văn hoá
+  exclude?: string[];    // tên các chỗ đã có trong lịch trình → không gợi ý lại
 }
 
 // Bỏ dấu + lowercase để so khớp tên
@@ -63,13 +73,26 @@ async function fetchWikimediaPhoto(name: string, destination: string): Promise<s
   return null;
 }
 
-// ── Gemini: sinh danh sách chỗ nên đi (trộn quán ăn / cà phê / điểm / check-in) ──
-async function askGemini(destination: string): Promise<RawSuggestion[]> {
-  const prompt =
+// ── Gemini: sinh danh sách chỗ nên đi, cá nhân hoá theo prefs ──
+async function askGemini(destination: string, prefs: Prefs): Promise<RawSuggestion[]> {
+  let prompt =
     `Bạn là chuyên gia du lịch Việt Nam. Gợi ý 8 địa điểm nên ghé khi đến "${destination}". ` +
     `Trộn nhiều loại: quán ăn ngon, quán cà phê đẹp, điểm tham quan nổi tiếng, ` +
     `và đặc biệt vài góc check-in / chỗ sống ảo đang hot trên mạng xã hội. ` +
     `Ưu tiên chỗ thật, cụ thể, đang được giới trẻ ưa thích.`;
+
+  if (prefs.companions) {
+    prompt += ` Chuyến đi dạng: ${prefs.companions} — chọn chỗ phù hợp với nhóm này.`;
+  }
+  if (prefs.interests && prefs.interests.length > 0) {
+    prompt += ` Người dùng đặc biệt thích: ${prefs.interests.join(", ")} — ưu tiên mạnh các loại này.`;
+  }
+  if (prefs.exclude && prefs.exclude.length > 0) {
+    prompt += ` TUYỆT ĐỐI KHÔNG gợi ý lại các chỗ sau (đã có trong lịch trình): ${prefs.exclude.slice(0, 30).join("; ")}.`;
+  }
+  prompt +=
+    ` Với mỗi chỗ, cho biết thêm: bestTime (thời điểm nên đi: sáng/chiều/tối/cả ngày), ` +
+    `duration (chơi khoảng bao lâu, vd "1-2 giờ"), priceLevel (miễn phí/₫/₫₫/₫₫₫ — ₫ là rẻ, ₫₫₫ là đắt).`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
@@ -92,8 +115,17 @@ async function askGemini(destination: string): Promise<RawSuggestion[]> {
                 },
                 description: { type: "STRING" },
                 area: { type: "STRING" },
+                bestTime: {
+                  type: "STRING",
+                  enum: ["sáng", "chiều", "tối", "cả ngày"],
+                },
+                duration: { type: "STRING" },
+                priceLevel: {
+                  type: "STRING",
+                  enum: ["miễn phí", "₫", "₫₫", "₫₫₫"],
+                },
               },
-              required: ["name", "category", "description"],
+              required: ["name", "category", "description", "bestTime", "duration", "priceLevel"],
             },
           },
         },
@@ -176,21 +208,33 @@ Deno.serve(async (req) => {
   const { sb, userId } = auth;
 
   try {
-    const { tripId, destination, refresh } = await req.json();
+    const { tripId, destination, refresh, companions, interests, exclude } = await req.json();
     if (!tripId || !destination) {
       return json({ error: "Missing tripId or destination" }, 400);
     }
+    const prefs: Prefs = {
+      companions: typeof companions === "string" ? companions : undefined,
+      interests: Array.isArray(interests) ? interests.slice(0, 10) : undefined,
+      exclude: Array.isArray(exclude) ? exclude.slice(0, 50) : undefined,
+    };
+    // Khoá cache: điểm đến + cá nhân hoá (KHÔNG gồm exclude — danh sách đó đổi
+    // liên tục; client tự lọc trùng phía hiển thị).
+    const paramsKey = JSON.stringify({
+      d: destination,
+      c: prefs.companions ?? "",
+      i: [...(prefs.interests ?? [])].sort(),
+    });
 
-    // 1. Cache hit? (bảng cache là tuỳ chọn — nếu chưa tạo thì bỏ qua, không lỗi)
+    // 1. Cache hit? — chỉ dùng khi params khớp (đổi điểm đến/tuỳ chọn → miss)
     if (CACHE_ENABLED && !refresh) {
       try {
         const { data: cached } = await sb
           .from("trip_suggestions")
-          .select("data, created_at")
+          .select("data, created_at, params")
           .eq("trip_id", tripId)
           .eq("created_by", userId)
           .maybeSingle();
-        if (cached) {
+        if (cached && cached.params === paramsKey) {
           const age = Date.now() - new Date(cached.created_at as string).getTime();
           if (age < CACHE_MAX_AGE_MS) return json(cached.data);
         }
@@ -203,8 +247,8 @@ Deno.serve(async (req) => {
       return json({ error: "Đã đạt giới hạn gợi ý hôm nay. Thử lại vào ngày mai nhé." }, 429);
     }
 
-    // 2. Gemini sinh danh sách
-    const raw = await askGemini(destination);
+    // 2. Gemini sinh danh sách (cá nhân hoá + loại chỗ đã có trong lịch)
+    const raw = await askGemini(destination, prefs);
     if (raw.length === 0) return json([]);
 
     // 3. Toạ độ trung tâm của điểm đến (để bias geocode)
@@ -232,7 +276,7 @@ Deno.serve(async (req) => {
     if (CACHE_ENABLED) {
       try {
         await sb.from("trip_suggestions").upsert(
-          { trip_id: tripId, created_by: userId, data: suggestions, created_at: new Date().toISOString() },
+          { trip_id: tripId, created_by: userId, data: suggestions, params: paramsKey, created_at: new Date().toISOString() },
           { onConflict: "trip_id,created_by" },
         );
       } catch (_) { /* bảng chưa tồn tại — bỏ qua cache */ }

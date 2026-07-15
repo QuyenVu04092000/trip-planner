@@ -41,20 +41,20 @@ export default function TimePicker({ value, onChange, placeholder = 'Ch·ªçn gi·ª
           w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm
           border transition-all duration-150 bg-white text-left
           ${open
-            ? 'border-blue-500 ring-2 ring-blue-100 shadow-sm'
-            : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'
+            ? 'border-terra ring-2 ring-terra/15 shadow-sm'
+            : 'border-sand hover:border-terra/40 hover:shadow-sm'
           }
         `}
       >
-        <span className="text-slate-400 flex-shrink-0"><Clock size={15} /></span>
-        <span className={`flex-1 font-medium ${value ? 'text-slate-700' : 'text-slate-400'}`}>
+        <span className="text-stone flex-shrink-0"><Clock size={15} /></span>
+        <span className={`flex-1 font-medium ${value ? 'text-ink' : 'text-stone'}`}>
           {value || placeholder}
         </span>
         {value && (
           <span
             role="button"
             onClick={e => { e.stopPropagation(); onChange(''); }}
-            className="inline-flex items-center justify-center text-slate-300 hover:text-slate-500 transition-colors flex-shrink-0"
+            className="inline-flex items-center justify-center text-dune hover:text-stone transition-colors flex-shrink-0"
           >
             <X size={13} />
           </span>
@@ -63,7 +63,7 @@ export default function TimePicker({ value, onChange, placeholder = 'Ch·ªçn gi·ª
 
       {open && (
         <div
-          className="absolute top-[calc(100%+8px)] left-0 z-50 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 w-28"
+          className="absolute top-[calc(100%+8px)] left-0 z-50 bg-white rounded-2xl shadow-2xl border border-sand py-2 w-28"
           style={{ animation: 'dropIn 0.15s ease-out' }}
         >
           <div ref={listRef} className="overflow-y-auto max-h-52 space-y-0.5 px-2">
@@ -74,7 +74,7 @@ export default function TimePicker({ value, onChange, placeholder = 'Ch·ªçn gi·ª
                 type="button"
                 onClick={() => { onChange(slot); setOpen(false); }}
                 className={`w-full text-center py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  slot === value ? 'bg-blue-600 text-white' : 'hover:bg-slate-100 text-slate-700'
+                  slot === value ? 'bg-terra text-white' : 'hover:bg-parchment text-ink'
                 }`}
               >
                 {slot}

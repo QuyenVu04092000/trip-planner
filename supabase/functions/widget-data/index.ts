@@ -62,6 +62,11 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
   if (!token) return json({ isLoggedIn: false, trip: null }, 401);
 
+  // Widget có cấu hình chọn trip cụ thể → gửi ?tripId=. Có tripId thì trả ĐÚNG trip
+  // đó (vẫn trong tập trip user được phép xem nhờ RLS). Không có tripId → giữ hành
+  // vi cũ (chọn trip gần nhất) làm fallback.
+  const selectedTripId = new URL(req.url).searchParams.get("tripId")?.trim() || null;
+
   // Client acts AS the user — RLS scopes every query automatically.
   const supabase = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -103,15 +108,25 @@ Deno.serve(async (req) => {
 
     if (trips.length === 0) return json({ isLoggedIn: true, trip: null });
 
-    // ── 2. Pick the "nearest" trip (ongoing → next upcoming → last past) ─────
     const today = vnTodayStr();
-    const sorted = [...trips].sort(
-      (a, b) => String(a.start_date).localeCompare(String(b.start_date)),
-    );
-    const nearest =
-      sorted.find((t) => String(t.start_date) <= today && String(t.end_date) >= today) ??
-      sorted.find((t) => String(t.start_date) > today) ??
-      sorted[sorted.length - 1];
+
+    // ── 2. Chọn trip hiển thị ────────────────────────────────────────────────
+    // Có tripId (widget được cấu hình) → dùng đúng trip đó. Không tìm thấy (đã xoá
+    // hoặc không có quyền) → trả trip:null để widget hiện "Chưa chọn chuyến đi".
+    // Không có tripId → fallback chọn trip gần nhất (ongoing → sắp tới → quá khứ).
+    let nearest: Record<string, unknown> | undefined;
+    if (selectedTripId) {
+      nearest = trips.find((t) => String(t.id) === selectedTripId);
+      if (!nearest) return json({ isLoggedIn: true, trip: null });
+    } else {
+      const sorted = [...trips].sort(
+        (a, b) => String(a.start_date).localeCompare(String(b.start_date)),
+      );
+      nearest =
+        sorted.find((t) => String(t.start_date) <= today && String(t.end_date) >= today) ??
+        sorted.find((t) => String(t.start_date) > today) ??
+        sorted[sorted.length - 1];
+    }
 
     const tripId = nearest.id as string;
     const startDate = nearest.start_date as string;

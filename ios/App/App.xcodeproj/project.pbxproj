@@ -11,6 +11,7 @@
 		0F5B42472FE27DB3007FFBEB /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0F5B42462FE27DB3007FFBEB /* SwiftUI.framework */; };
 		0F5B42532FE27DB4007FFBEB /* TripWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0F5B42422FE27DB3007FFBEB /* TripWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0F5B425B2FE28497007FFBEB /* WidgetBridgePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F5B425A2FE28497007FFBEB /* WidgetBridgePlugin.swift */; };
+		0F7A100000000000000A0003 /* CapacitorAppLauncher in Frameworks */ = {isa = PBXBuildFile; productRef = 0F7A100000000000000A0002 /* CapacitorAppLauncher */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -96,6 +97,7 @@
 			files = (
 				BE46000000000000CAFE0002 /* Capacitor in Frameworks */,
 				BE46000000000000CAFE0003 /* Cordova in Frameworks */,
+				0F7A100000000000000A0003 /* CapacitorAppLauncher in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -192,6 +194,7 @@
 			packageProductDependencies = (
 				BE46000000000000CAFE0004 /* Capacitor */,
 				BE46000000000000CAFE0005 /* Cordova */,
+				0F7A100000000000000A0002 /* CapacitorAppLauncher */,
 			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
@@ -227,6 +230,7 @@
 			mainGroup = 504EC2FB1FED79650016851F;
 			packageReferences = (
 				BE46000000000000CAFE0001 /* XCRemoteSwiftPackageReference "capacitor-swift-pm" */,
+				0F7A100000000000000A0001 /* XCLocalSwiftPackageReference "../../node_modules/@capacitor/app-launcher" */,
 			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
@@ -598,6 +602,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		0F7A100000000000000A0001 /* XCLocalSwiftPackageReference "../../node_modules/@capacitor/app-launcher" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../node_modules/@capacitor/app-launcher";
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		BE46000000000000CAFE0001 /* XCRemoteSwiftPackageReference "capacitor-swift-pm" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -610,6 +621,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0F7A100000000000000A0002 /* CapacitorAppLauncher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F7A100000000000000A0001 /* XCLocalSwiftPackageReference "../../node_modules/@capacitor/app-launcher" */;
+			productName = CapacitorAppLauncher;
+		};
 		BE46000000000000CAFE0004 /* Capacitor */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BE46000000000000CAFE0001 /* XCRemoteSwiftPackageReference "capacitor-swift-pm" */;

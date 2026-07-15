@@ -8,67 +8,68 @@ import {
   Shuffle,
 } from "lucide-react";
 import PlacesAutocomplete from "./PlacesAutocomplete";
-import type { Activity } from "../types";
+import type { Activity, BackupAddress } from "../types";
 import { optimizeOrder } from "../utils/routeOptimize";
 import { geocodePlace, fetchWeather, weatherInfo, type DayWeather } from "../utils/weather";
 import { openDirections } from "../utils/maps";
 import DatePicker from "./DatePicker";
 import TimePicker from "./TimePicker";
 
+// 6 tông đất cho từng ngày — giữ tính năng phân biệt ngày, theo journal palette
 const PALETTE = [
   {
-    pill: "bg-blue-500",
-    light: "bg-blue-50",
-    accent: "text-blue-600",
-    border: "border-blue-200",
-    time: "bg-blue-100 text-blue-700",
-    dot: "bg-blue-500",
-    line: "bg-blue-100",
+    pill: "bg-terra",
+    light: "bg-terra-pale/60",
+    accent: "text-terra-dark",
+    border: "border-terra/25",
+    time: "bg-terra-pale text-terra-dark",
+    dot: "bg-terra",
+    line: "bg-terra-pale",
   },
   {
-    pill: "bg-violet-500",
-    light: "bg-violet-50",
-    accent: "text-violet-600",
-    border: "border-violet-200",
-    time: "bg-violet-100 text-violet-700",
-    dot: "bg-violet-500",
-    line: "bg-violet-100",
+    pill: "bg-slateblue",
+    light: "bg-[#E9EEF1]",
+    accent: "text-slateblue",
+    border: "border-slateblue/25",
+    time: "bg-[#E3EAEE] text-[#334755]",
+    dot: "bg-slateblue",
+    line: "bg-[#E3EAEE]",
   },
   {
-    pill: "bg-emerald-500",
-    light: "bg-emerald-50",
-    accent: "text-emerald-600",
-    border: "border-emerald-200",
-    time: "bg-emerald-100 text-emerald-700",
-    dot: "bg-emerald-500",
-    line: "bg-emerald-100",
+    pill: "bg-moss",
+    light: "bg-sage-pale/70",
+    accent: "text-sage-dark",
+    border: "border-sage/50",
+    time: "bg-sage-pale text-sage-dark",
+    dot: "bg-moss",
+    line: "bg-sage-pale",
   },
   {
-    pill: "bg-amber-500",
-    light: "bg-amber-50",
-    accent: "text-amber-600",
-    border: "border-amber-200",
-    time: "bg-amber-100 text-amber-700",
-    dot: "bg-amber-500",
-    line: "bg-amber-100",
+    pill: "bg-gold",
+    light: "bg-gold-pale/60",
+    accent: "text-gold-dark",
+    border: "border-gold/30",
+    time: "bg-gold-pale text-gold-dark",
+    dot: "bg-gold",
+    line: "bg-gold-pale",
   },
   {
-    pill: "bg-rose-500",
-    light: "bg-rose-50",
-    accent: "text-rose-600",
-    border: "border-rose-200",
-    time: "bg-rose-100 text-rose-700",
-    dot: "bg-rose-500",
-    line: "bg-rose-100",
+    pill: "bg-clay",
+    light: "bg-clay-pale/70",
+    accent: "text-clay-dark",
+    border: "border-clay/30",
+    time: "bg-clay-pale text-clay-dark",
+    dot: "bg-clay",
+    line: "bg-clay-pale",
   },
   {
-    pill: "bg-teal-500",
-    light: "bg-teal-50",
-    accent: "text-teal-600",
-    border: "border-teal-200",
-    time: "bg-teal-100 text-teal-700",
-    dot: "bg-teal-500",
-    line: "bg-teal-100",
+    pill: "bg-plum",
+    light: "bg-[#F1EAEF]",
+    accent: "text-[#5D3F50]",
+    border: "border-plum/30",
+    time: "bg-[#EEE5EB] text-[#5D3F50]",
+    dot: "bg-plum",
+    line: "bg-[#EEE5EB]",
   },
 ] as const;
 
@@ -82,6 +83,7 @@ const BLANK: FormData = {
   address: "",
   lat: null,
   lon: null,
+  backups: [],
   cost: "",
   notes: "",
   position: 0,
@@ -104,6 +106,23 @@ interface Props {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+
+// Ảnh bản đồ tĩnh (Mapbox Static Images) với pin ĐÁNH SỐ theo thứ tự hoạt động
+// trong ngày → nhìn được tuyến đường tổng thể mà không cần map tương tác.
+// Chỉ hiện khi ngày có ≥2 hoạt động có toạ độ.
+function dayMapUrl(acts: Activity[]): string | null {
+  const located = acts.filter((a) => a.lat != null && a.lon != null).slice(0, 10);
+  if (located.length < 2) return null;
+  const pins = located
+    .map((a, i) => `pin-s-${i + 1}+C4622D(${a.lon},${a.lat})`)
+    .join(',');
+  return (
+    `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${pins}/auto/640x240@2x` +
+    `?padding=44&access_token=${MAPBOX_TOKEN}`
+  );
+}
 
 function isValidDate(d: string) {
   if (!d || d.startsWith("=")) return false;
@@ -168,7 +187,7 @@ function Card({
   return (
     <div
       onClick={onEdit}
-      className="group bg-white rounded-xl border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all cursor-pointer flex gap-3 items-start p-3.5"
+      className="group bg-white rounded-xl border border-sand shadow-sm hover:shadow-md hover:border-sand transition-all cursor-pointer flex gap-3 items-start p-3.5"
     >
       {/* Time badge */}
       <div className="flex-shrink-0 w-14 pt-0.5">
@@ -179,15 +198,15 @@ function Card({
             {act.time}
           </span>
         ) : (
-          <div className="w-2 h-2 rounded-full bg-slate-200 mt-1.5 mx-auto" />
+          <div className="w-2 h-2 rounded-full bg-sand mt-1.5 mx-auto" />
         )}
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-sm text-slate-800 leading-snug">
+        <p className="font-semibold text-sm text-ink leading-snug">
           {act.activity || (
-            <span className="text-slate-300 font-normal italic">
+            <span className="text-dune font-normal italic">
               Chưa có tên
             </span>
           )}
@@ -196,8 +215,8 @@ function Card({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
             {act.address && (
               <span className="flex items-center gap-1">
-                <MapPin size={9} className="flex-shrink-0 text-slate-300" />
-                <span className="truncate max-w-[130px] text-xs text-slate-400">
+                <MapPin size={9} className="flex-shrink-0 text-dune" />
+                <span className="truncate max-w-[130px] text-xs text-stone">
                   {act.address}
                 </span>
                 <button
@@ -205,7 +224,7 @@ function Card({
                     e.stopPropagation();
                     onNavigate();
                   }}
-                  className="flex items-center gap-0.5 text-[10px] font-semibold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-full flex-shrink-0 active:bg-blue-100 transition-colors"
+                  className="flex items-center gap-0.5 text-[10px] font-semibold text-terra bg-terra-pale px-1.5 py-0.5 rounded-full flex-shrink-0 active:bg-terra-pale transition-colors"
                 >
                   <Navigation size={8} />
                   Dẫn đường
@@ -213,10 +232,37 @@ function Card({
               </span>
             )}
             {act.notes && (
-              <span className="text-xs text-slate-400 italic truncate max-w-[140px]">
+              <span className="text-xs text-stone italic truncate max-w-[140px]">
                 {act.notes}
               </span>
             )}
+          </div>
+        )}
+        {/* Địa chỉ dự phòng */}
+        {(act.backups ?? []).filter((b) => b.address).length > 0 && (
+          <div className="mt-1.5 pl-3 border-l-2 border-sand space-y-1">
+            {(act.backups ?? [])
+              .filter((b) => b.address)
+              .map((b, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <span className="text-[10px] text-dune font-medium flex-shrink-0">
+                    Dự phòng {i + 1}:
+                  </span>
+                  <span className="truncate max-w-[120px] text-xs text-stone">
+                    {b.address}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDirections(b);
+                    }}
+                    className="flex items-center gap-0.5 text-[10px] font-semibold text-terra bg-terra-pale px-1.5 py-0.5 rounded-full flex-shrink-0 active:bg-terra-pale transition-colors"
+                  >
+                    <Navigation size={8} />
+                    Dẫn đường
+                  </button>
+                </div>
+              ))}
           </div>
         )}
       </div>
@@ -227,7 +273,7 @@ function Card({
           e.stopPropagation();
           onDelete();
         }}
-        className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-200 hover:text-rose-400 hover:bg-rose-50 transition-colors -mt-0.5 -mr-0.5"
+        className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-sand hover:text-wine hover:bg-wine-pale transition-colors -mt-0.5 -mr-0.5"
       >
         <Trash2 size={13} />
       </button>
@@ -253,7 +299,7 @@ function EditForm({
   onCancel: () => void;
 }) {
   const inp =
-    "w-full border border-slate-200 bg-white rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 placeholder:text-slate-300 transition-all";
+    "w-full border border-sand bg-white rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-terra/25 focus:border-terra placeholder:text-dune transition-all";
 
   return (
     <div
@@ -262,7 +308,7 @@ function EditForm({
       {/* Date + Time — stack on mobile, side-by-side on sm+ with proportional widths */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="sm:flex-[3]">
-          <span className="text-xs font-semibold text-slate-500 block mb-1.5">
+          <span className="text-xs font-semibold text-stone block mb-1.5">
             Ngày
           </span>
           <DatePicker
@@ -272,7 +318,7 @@ function EditForm({
           />
         </div>
         <div className="sm:flex-[2]">
-          <span className="text-xs font-semibold text-slate-500 block mb-1.5">
+          <span className="text-xs font-semibold text-stone block mb-1.5">
             Thời gian
           </span>
           <TimePicker
@@ -284,7 +330,7 @@ function EditForm({
 
       {/* Activity name */}
       <div>
-        <span className="text-xs font-semibold text-slate-500 block mb-1.5">
+        <span className="text-xs font-semibold text-stone block mb-1.5">
           Hoạt động
         </span>
         <input
@@ -302,7 +348,7 @@ function EditForm({
 
       {/* Address */}
       <div>
-        <span className="text-xs font-semibold text-slate-500 block mb-1.5">
+        <span className="text-xs font-semibold text-stone block mb-1.5">
           Địa chỉ
         </span>
         <PlacesAutocomplete
@@ -315,9 +361,58 @@ function EditForm({
         />
       </div>
 
+      {/* Backup addresses — chỗ thay thế nếu địa điểm chính không đi được */}
+      <div>
+        <span className="text-xs font-semibold text-stone block mb-1.5">
+          Địa chỉ dự phòng
+        </span>
+        <div className="space-y-2">
+          {(form.backups ?? []).map((b, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <div className="flex-1">
+                <PlacesAutocomplete
+                  value={b.address}
+                  onChange={(v, coords) => {
+                    const next = [...(form.backups ?? [])];
+                    next[i] = { address: v, lat: coords?.lat ?? null, lon: coords?.lon ?? null };
+                    onChange({ ...form, backups: next });
+                  }}
+                  placeholder={`Địa điểm dự phòng ${i + 1}...`}
+                  className={inp}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = (form.backups ?? []).filter((_, j) => j !== i);
+                  onChange({ ...form, backups: next });
+                }}
+                className="mt-2 p-2 text-stone hover:text-terra hover:bg-black/5 rounded-lg transition-colors shrink-0"
+                aria-label="Xóa địa chỉ dự phòng"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const next: BackupAddress[] = [
+              ...(form.backups ?? []),
+              { address: "", lat: null, lon: null },
+            ];
+            onChange({ ...form, backups: next });
+          }}
+          className="mt-2 inline-flex items-center gap-1.5 text-sm text-terra hover:text-terra-dark font-semibold transition-colors"
+        >
+          <Plus size={16} /> Thêm địa chỉ dự phòng
+        </button>
+      </div>
+
       {/* Notes row */}
       <div>
-        <span className="text-xs font-semibold text-slate-500 block mb-1.5">
+        <span className="text-xs font-semibold text-stone block mb-1.5">
           Ghi chú
         </span>
         <input
@@ -332,14 +427,14 @@ function EditForm({
       <div className="flex justify-end gap-2 pt-0.5">
         <button
           onClick={onCancel}
-          className="px-4 py-2 text-sm text-slate-500 hover:bg-black/5 rounded-xl transition-colors font-medium"
+          className="px-4 py-2 text-sm text-stone hover:bg-black/5 rounded-xl transition-colors font-medium"
         >
           Hủy
         </button>
         <button
           onClick={onSave}
           disabled={saving}
-          className="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl font-semibold transition-colors"
+          className="px-5 py-2 text-sm bg-terra hover:bg-terra-dark disabled:opacity-60 text-white rounded-xl font-semibold transition-colors"
         >
           {saving ? "Đang lưu..." : "Lưu"}
         </button>
@@ -411,6 +506,7 @@ export default function Itinerary({
       address: a.address,
       lat: a.lat ?? null,
       lon: a.lon ?? null,
+      backups: a.backups ?? [],
       cost: a.cost,
       notes: a.notes,
       position: a.position,
@@ -461,19 +557,19 @@ export default function Itinerary({
       {/* ── Empty state ── */}
       {isEmpty && (
         <div className="text-center py-20">
-          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-            <CalendarDays size={28} className="text-slate-300" />
+          <div className="w-16 h-16 bg-parchment rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <CalendarDays size={28} className="text-dune" />
           </div>
-          <h3 className="text-lg font-bold text-slate-700 mb-2">
+          <h3 className="text-lg font-bold text-ink mb-2">
             Chưa có hoạt động nào
           </h3>
-          <p className="text-slate-400 text-sm mb-8 max-w-xs mx-auto leading-relaxed">
+          <p className="text-stone text-sm mb-8 max-w-xs mx-auto leading-relaxed">
             Bắt đầu lên kế hoạch từng ngày, từng địa điểm cho chuyến đi
             của bạn.
           </p>
           <button
             onClick={() => startAdd("")}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 bg-terra hover:bg-terra-dark text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm"
           >
             <Plus size={15} />
             Thêm hoạt động đầu tiên
@@ -511,24 +607,37 @@ export default function Itinerary({
                   return (
                     <span
                       title={info.label}
-                      className="flex items-center gap-1 text-xs font-medium text-slate-500 flex-shrink-0"
+                      className="flex items-center gap-1 text-xs font-medium text-stone flex-shrink-0"
                     >
                       <span>{info.emoji}</span>
-                      <span>{w.tMax}°<span className="text-slate-300">/{w.tMin}°</span></span>
+                      <span>{w.tMax}°<span className="text-dune">/{w.tMin}°</span></span>
                     </span>
                   );
                 })()}
-                <div className="flex-1 h-px bg-slate-100 min-w-4" />
+                <div className="flex-1 h-px bg-parchment min-w-4" />
                 {acts.filter((a) => a.lat != null && a.lon != null).length >= 3 && (
                   <button
                     onClick={() => void optimizeDay(acts)}
                     title="Sắp xếp theo tuyến gần nhau nhất"
-                    className="flex items-center gap-1 text-[11px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-full flex-shrink-0 transition-colors"
+                    className="flex items-center gap-1 text-[11px] font-semibold text-terra-dark bg-parchment hover:bg-parchment px-2 py-1 rounded-full flex-shrink-0 transition-colors"
                   >
                     <Shuffle size={12} /> Tối ưu tuyến
                   </button>
                 )}
               </div>
+
+              {/* Bản đồ tổng ngày — pin đánh số theo thứ tự hoạt động */}
+              {(() => {
+                const url = dayMapUrl(acts);
+                return url ? (
+                  <img
+                    src={url}
+                    alt={`Bản đồ ngày ${di + 1}`}
+                    loading="lazy"
+                    className="w-full h-[120px] object-cover rounded-xl border border-sand mb-4"
+                  />
+                ) : null;
+              })()}
 
               {/* Timeline */}
               <div className="relative">
@@ -593,7 +702,7 @@ export default function Itinerary({
               {!isEditing && (
                 <button
                   onClick={() => startAdd(date)}
-                  className="mt-3 ml-6 flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-blue-500 transition-colors py-1"
+                  className="mt-3 ml-6 flex items-center gap-1.5 text-xs font-semibold text-stone hover:text-terra transition-colors py-1"
                 >
                   <Plus size={13} />
                   Thêm hoạt động ngày {di + 1}
@@ -607,10 +716,10 @@ export default function Itinerary({
         {ungrouped.length > 0 && (
           <section>
             <div className="flex items-center gap-2.5 mb-5">
-              <span className="bg-slate-300 text-white text-xs font-bold px-3 py-1.5 rounded-full flex-shrink-0">
+              <span className="bg-dune text-white text-xs font-bold px-3 py-1.5 rounded-full flex-shrink-0">
                 Chưa có ngày
               </span>
-              <div className="flex-1 h-px bg-slate-100" />
+              <div className="flex-1 h-px bg-parchment" />
             </div>
             <div className="space-y-3">
               {ungrouped.map((act) =>
@@ -626,7 +735,7 @@ export default function Itinerary({
                   />
                 ) : (
                   <div key={act.id} className="flex gap-3 items-start">
-                    <div className="flex-shrink-0 w-3 h-3 rounded-full mt-4 ring-2 ring-white bg-slate-300" />
+                    <div className="flex-shrink-0 w-3 h-3 rounded-full mt-4 ring-2 ring-white bg-dune" />
                     <div className="flex-1 min-w-0">
                       <Card
                         act={act}
@@ -661,7 +770,7 @@ export default function Itinerary({
       {!isEditing && (
         <button
           onClick={() => startAdd("")}
-          className="fixed bottom-6 right-6 z-20 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl shadow-xl hover:shadow-2xl flex items-center justify-center transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+          className="fixed bottom-6 right-6 z-20 w-14 h-14 bg-terra hover:bg-terra-dark text-white rounded-2xl shadow-xl hover:shadow-2xl flex items-center justify-center transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
           title="Thêm hoạt động"
         >
           <Plus size={24} />

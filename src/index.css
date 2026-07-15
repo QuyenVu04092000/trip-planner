@@ -45,8 +45,8 @@ input, textarea, select {
 
 body {
   font-family: 'Inter', system-ui, sans-serif;
-  background-color: #f1f5f9;
-  color: #1e293b;
+  background-color: #F3EDE2;
+  color: #1E2A36;
   margin: 0;
   position: fixed;
   width: 100%;
@@ -60,7 +60,7 @@ body {
 
 /* Spreadsheet styles */
 .spreadsheet-cell {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #EAE3D6;
   outline: none;
   padding: 4px 8px;
   font-size: 13px;
@@ -73,35 +73,35 @@ body {
 }
 
 .spreadsheet-cell.selected {
-  border: 2px solid #3b82f6;
+  border: 2px solid #C4622D;
   z-index: 10;
   position: relative;
 }
 
 .spreadsheet-cell.editing {
-  border: 2px solid #3b82f6;
+  border: 2px solid #C4622D;
   z-index: 20;
   position: relative;
   overflow: visible;
 }
 
 .spreadsheet-header {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #FAF6EF;
+  border: 1px solid #EAE3D6;
   padding: 6px 8px;
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: #8A8378;
   text-align: center;
   user-select: none;
 }
 
 .spreadsheet-row-num {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #FAF6EF;
+  border: 1px solid #EAE3D6;
   padding: 4px 8px;
   font-size: 12px;
-  color: #94a3b8;
+  color: #B5AC9E;
   text-align: center;
   min-width: 40px;
   user-select: none;
@@ -121,7 +121,7 @@ body {
   position: relative;
   overflow: hidden;
   border-radius: 8px;
-  background: #e2e8f0;
+  background: #EAE3D6;
   aspect-ratio: 1;
   cursor: pointer;
 }

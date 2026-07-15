@@ -136,7 +136,7 @@ export default function DatePicker({
   return (
     <div className="relative" ref={ref}>
       {label && (
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+        <label className="block text-xs font-semibold text-stone uppercase tracking-wide mb-1.5">
           {label}
         </label>
       )}
@@ -149,22 +149,22 @@ export default function DatePicker({
           w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-sm
           border transition-all duration-150 bg-white text-left
           ${open
-            ? 'border-blue-500 ring-2 ring-blue-100 shadow-sm'
-            : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'
+            ? 'border-terra ring-2 ring-terra/15 shadow-sm'
+            : 'border-sand hover:border-terra/40 hover:shadow-sm'
           }
         `}
       >
-        <span className="text-slate-400 flex-shrink-0">
+        <span className="text-stone flex-shrink-0">
           {icon ?? <CalendarDays size={15} />}
         </span>
-        <span className={`flex-1 font-medium ${value ? 'text-slate-700' : 'text-slate-400'}`}>
+        <span className={`flex-1 font-medium ${value ? 'text-ink' : 'text-stone'}`}>
           {value ? formatDisplay(value) : placeholder}
         </span>
         {value && (
           <span
             role="button"
             onClick={e => { e.stopPropagation(); onChange(''); }}
-            className="inline-flex items-center justify-center text-slate-300 hover:text-slate-500 transition-colors flex-shrink-0"
+            className="inline-flex items-center justify-center text-dune hover:text-stone transition-colors flex-shrink-0"
           >
             <X size={13} />
           </span>
@@ -176,7 +176,7 @@ export default function DatePicker({
         <div
           className={`
             absolute top-[calc(100%+8px)] z-50 bg-white rounded-2xl shadow-2xl
-            border border-slate-100 p-4 w-72
+            border border-sand p-4 w-72
             ${align === 'right' ? 'right-0' : 'left-0'}
           `}
           style={{ animation: 'dropIn 0.15s ease-out' }}
@@ -190,7 +190,7 @@ export default function DatePicker({
                 <button
                   type="button"
                   onClick={prevMonth}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-stone hover:text-ink hover:bg-parchment transition-colors"
                 >
                   <ChevronLeft size={15} />
                 </button>
@@ -200,7 +200,7 @@ export default function DatePicker({
                   <button
                     type="button"
                     onClick={() => setCalView('month')}
-                    className="px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors text-sm font-semibold text-slate-700"
+                    className="px-2 py-1 rounded-lg hover:bg-parchment transition-colors text-sm font-semibold text-ink"
                   >
                     {MONTHS_FULL[viewMonth]}
                   </button>
@@ -208,7 +208,7 @@ export default function DatePicker({
                   <button
                     type="button"
                     onClick={() => { setYearPageStart(Math.floor(viewYear / YEAR_PAGE) * YEAR_PAGE); setCalView('year'); }}
-                    className="px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors text-sm font-bold text-blue-600"
+                    className="px-2 py-1 rounded-lg hover:bg-terra-pale transition-colors text-sm font-bold text-terra-dark"
                   >
                     {viewYear}
                   </button>
@@ -217,7 +217,7 @@ export default function DatePicker({
                 <button
                   type="button"
                   onClick={nextMonth}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-stone hover:text-ink hover:bg-parchment transition-colors"
                 >
                   <ChevronRight size={15} />
                 </button>
@@ -226,7 +226,7 @@ export default function DatePicker({
               {/* Weekday headers */}
               <div className="grid grid-cols-7 mb-1">
                 {WEEKDAYS.map((d, i) => (
-                  <div key={d} className={`text-center text-xs font-semibold py-1 ${i >= 5 ? 'text-rose-400' : 'text-slate-400'}`}>
+                  <div key={d} className={`text-center text-xs font-semibold py-1 ${i >= 5 ? 'text-wine' : 'text-stone'}`}>
                     {d}
                   </div>
                 ))}
@@ -251,16 +251,16 @@ export default function DatePicker({
                   return (
                     <div key={day} className="relative h-9 flex items-center justify-center">
                       {inRange && (
-                        <div className={`absolute inset-y-1 bg-blue-50 ${
+                        <div className={`absolute inset-y-1 bg-terra-pale ${
                           isRangeFirst ? 'left-0 rounded-l-full' :
                           isRangeLast  ? 'right-0 rounded-r-full' : 'inset-x-0'
                         }`} />
                       )}
                       {isEdge && d === rangeStart && rangeEnd && (
-                        <div className="absolute inset-y-1 right-0 w-1/2 bg-blue-50" />
+                        <div className="absolute inset-y-1 right-0 w-1/2 bg-terra-pale" />
                       )}
                       {isEdge && d === rangeEnd && rangeStart && (
-                        <div className="absolute inset-y-1 left-0 w-1/2 bg-blue-50" />
+                        <div className="absolute inset-y-1 left-0 w-1/2 bg-terra-pale" />
                       )}
                       <button
                         type="button"
@@ -273,20 +273,20 @@ export default function DatePicker({
                           transition-all duration-100 flex items-center justify-center
                           ${disabled ? 'opacity-25 cursor-not-allowed' : 'cursor-pointer'}
                           ${isSelected || isEdge
-                            ? 'bg-blue-600 text-white shadow-md shadow-blue-200 scale-105'
+                            ? 'bg-terra text-white shadow-md shadow-blue-200 scale-105'
                             : inRange
-                            ? 'text-blue-600 hover:bg-blue-100'
+                            ? 'text-terra-dark hover:bg-terra-pale'
                             : disabled
-                            ? 'text-slate-400'
+                            ? 'text-stone'
                             : isWeekend
-                            ? 'text-rose-500 hover:bg-rose-50'
-                            : 'text-slate-700 hover:bg-slate-100'
+                            ? 'text-wine hover:bg-wine-pale'
+                            : 'text-ink hover:bg-parchment'
                           }
                         `}
                       >
                         {day}
                         {isToday && !isSelected && !isEdge && (
-                          <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-400" />
+                          <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-terra" />
                         )}
                       </button>
                     </div>
@@ -295,11 +295,11 @@ export default function DatePicker({
               </div>
 
               {/* Footer */}
-              <div className="mt-2 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <div className="mt-2 pt-2.5 border-t border-sand flex items-center justify-between">
                 <button
                   type="button"
                   onClick={() => { if (min && today < min) return; onChange(today); setOpen(false); }}
-                  className="text-xs font-semibold text-blue-500 hover:text-blue-700 transition-colors px-2 py-1 rounded-lg hover:bg-blue-50"
+                  className="text-xs font-semibold text-terra hover:text-terra-dark transition-colors px-2 py-1 rounded-lg hover:bg-terra-pale"
                 >
                   Hôm nay
                 </button>
@@ -307,7 +307,7 @@ export default function DatePicker({
                   <button
                     type="button"
                     onClick={() => { onChange(''); setOpen(false); }}
-                    className="text-xs font-medium text-slate-400 hover:text-rose-500 transition-colors px-2 py-1 rounded-lg hover:bg-rose-50"
+                    className="text-xs font-medium text-stone hover:text-wine transition-colors px-2 py-1 rounded-lg hover:bg-wine-pale"
                   >
                     Xóa ngày
                   </button>
@@ -324,21 +324,21 @@ export default function DatePicker({
                 <button
                   type="button"
                   onClick={() => setViewYear(y => y - 1)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-stone hover:text-ink hover:bg-parchment transition-colors"
                 >
                   <ChevronLeft size={15} />
                 </button>
                 <button
                   type="button"
                   onClick={() => { setYearPageStart(Math.floor(viewYear / YEAR_PAGE) * YEAR_PAGE); setCalView('year'); }}
-                  className="px-3 py-1 rounded-lg hover:bg-blue-50 transition-colors text-sm font-bold text-blue-600"
+                  className="px-3 py-1 rounded-lg hover:bg-terra-pale transition-colors text-sm font-bold text-terra-dark"
                 >
                   {viewYear}
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewYear(y => y + 1)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-stone hover:text-ink hover:bg-parchment transition-colors"
                 >
                   <ChevronRight size={15} />
                 </button>
@@ -359,10 +359,10 @@ export default function DatePicker({
                       className={`
                         h-10 rounded-xl text-sm font-semibold transition-all
                         ${isValueMonth
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                          ? 'bg-terra text-white shadow-md shadow-blue-200'
                           : isCurrentMonth
-                          ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
-                          : 'text-slate-600 hover:bg-slate-100'
+                          ? 'bg-terra-pale text-terra-dark ring-1 ring-terra/25'
+                          : 'text-stone hover:bg-parchment'
                         }
                       `}
                     >
@@ -373,11 +373,11 @@ export default function DatePicker({
               </div>
 
               {/* Back link */}
-              <div className="mt-3 pt-2.5 border-t border-slate-100 text-center">
+              <div className="mt-3 pt-2.5 border-t border-sand text-center">
                 <button
                   type="button"
                   onClick={() => setCalView('day')}
-                  className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50"
+                  className="text-xs font-semibold text-stone hover:text-stone transition-colors px-2 py-1 rounded-lg hover:bg-paper"
                 >
                   ← Quay lại
                 </button>
@@ -393,17 +393,17 @@ export default function DatePicker({
                 <button
                   type="button"
                   onClick={() => setYearPageStart(s => s - YEAR_PAGE)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-stone hover:text-ink hover:bg-parchment transition-colors"
                 >
                   <ChevronLeft size={15} />
                 </button>
-                <span className="text-sm font-bold text-slate-600">
+                <span className="text-sm font-bold text-stone">
                   {yearPageStart} – {yearPageEnd}
                 </span>
                 <button
                   type="button"
                   onClick={() => setYearPageStart(s => s + YEAR_PAGE)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-stone hover:text-ink hover:bg-parchment transition-colors"
                 >
                   <ChevronRight size={15} />
                 </button>
@@ -422,10 +422,10 @@ export default function DatePicker({
                       className={`
                         h-10 rounded-xl text-sm font-semibold transition-all
                         ${isValueYear
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                          ? 'bg-terra text-white shadow-md shadow-blue-200'
                           : isCurrentYear
-                          ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
-                          : 'text-slate-600 hover:bg-slate-100'
+                          ? 'bg-terra-pale text-terra-dark ring-1 ring-terra/25'
+                          : 'text-stone hover:bg-parchment'
                         }
                       `}
                     >
@@ -436,11 +436,11 @@ export default function DatePicker({
               </div>
 
               {/* Back link */}
-              <div className="mt-3 pt-2.5 border-t border-slate-100 text-center">
+              <div className="mt-3 pt-2.5 border-t border-sand text-center">
                 <button
                   type="button"
                   onClick={() => setCalView('month')}
-                  className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-50"
+                  className="text-xs font-semibold text-stone hover:text-stone transition-colors px-2 py-1 rounded-lg hover:bg-paper"
                 >
                   ← Quay lại
                 </button>

@@ -4,7 +4,19 @@ import type { Trip } from '../types';
 import DatePicker from './DatePicker';
 import PlacesAutocomplete from './PlacesAutocomplete';
 
+// Bảng cover mới — tông đất theo journal palette
 const COVER_COLORS = [
+  'from-terra to-terra-dark',
+  'from-moss to-sage-dark',
+  'from-gold to-gold-dark',
+  'from-clay to-clay-dark',
+  'from-slateblue to-ink',
+  'from-plum to-ink-light',
+];
+
+// GIỮ NGUYÊN — cover của trip cũ lưu các class này trong DB; liệt kê ở đây để
+// Tailwind vẫn generate CSS cho chúng (JIT quét source). Không dùng trực tiếp.
+export const LEGACY_COVER_COLORS = [
   'from-blue-400 to-indigo-600',
   'from-rose-400 to-pink-600',
   'from-amber-400 to-orange-600',
@@ -22,8 +34,8 @@ interface Props {
 }
 
 // Shared input class — matches EditForm + DatePicker/TimePicker triggers
-const inp = 'w-full border border-slate-200 bg-white rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/30 focus:border-blue-400 placeholder:text-slate-300 transition-all';
-const lbl = 'block text-xs font-semibold text-slate-500 mb-1.5';
+const inp = 'w-full border border-sand bg-white rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-terra/25 focus:border-terra placeholder:text-dune transition-all';
+const lbl = 'block text-xs font-semibold text-stone mb-1.5';
 
 export default function CreateTripModal({ onClose, onSave, initialTrip }: Props) {
   const isEdit = !!initialTrip;
@@ -138,8 +150,8 @@ export default function CreateTripModal({ onClose, onSave, initialTrip }: Props)
                   onClick={() => setEmoji(e)}
                   className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all ${
                     emoji === e
-                      ? 'bg-blue-50 ring-2 ring-blue-400 scale-110 shadow-sm'
-                      : 'bg-slate-50 hover:bg-slate-100'
+                      ? 'bg-terra-pale ring-2 ring-terra/40 scale-110 shadow-sm'
+                      : 'bg-paper hover:bg-parchment'
                   }`}
                 >
                   {e}
@@ -158,7 +170,7 @@ export default function CreateTripModal({ onClose, onSave, initialTrip }: Props)
                   type="button"
                   onClick={() => setCoverColor(c)}
                   className={`w-8 h-8 rounded-full bg-gradient-to-br ${c} transition-all ${
-                    coverColor === c ? 'ring-2 ring-offset-2 ring-blue-500 scale-110' : 'hover:scale-105'
+                    coverColor === c ? 'ring-2 ring-offset-2 ring-terra scale-110' : 'hover:scale-105'
                   }`}
                 />
               ))}
@@ -170,14 +182,14 @@ export default function CreateTripModal({ onClose, onSave, initialTrip }: Props)
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 border border-slate-200 text-slate-600 rounded-xl py-2.5 text-sm font-semibold hover:bg-slate-50 transition-colors"
+              className="flex-1 border border-sand text-stone rounded-xl py-2.5 text-sm font-semibold hover:bg-paper transition-colors"
             >
               Hủy
             </button>
             <button
               type="submit"
               disabled={!name.trim()}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl py-2.5 text-sm font-semibold transition-colors"
+              className="flex-1 bg-terra hover:bg-terra-dark disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl py-2.5 text-sm font-semibold transition-colors"
             >
               {isEdit ? 'Lưu thay đổi' : 'Tạo chuyến đi'}
             </button>

@@ -10,7 +10,7 @@ import {
   readWidgetEcho,
   syncWidgetAuth,
   adoptWidgetAuth,
-  syncNearestTripToWidget,
+  setWidgetTripList,
 } from "./utils/widgetBridge";
 import {
   registerSW,
@@ -127,9 +127,8 @@ export default function App() {
       .then(async (data) => {
         setTrips(data);
         checkAndNotify(data);
-        // Push the nearest trip across ALL trips to the widget (single rule shared
-        // with the edge function), so the widget shows the correct trip.
-        await syncNearestTripToWidget(data);
+        // Công bố danh sách trip cho picker cấu hình widget (widget tự fetch trip đã chọn).
+        await setWidgetTripList(data);
         // Diagnostic: read echo file written by widget extension to confirm App Group access
         setTimeout(() => {
           void readWidgetEcho();
@@ -149,7 +148,12 @@ export default function App() {
         updatedAt: now,
       };
       await createTrip(trip);
-      setTrips((prev) => [trip, ...prev]);
+      setTrips((prev) => {
+        const next = [trip, ...prev];
+        // Trip mới → cập nhật danh sách chọn của widget.
+        void setWidgetTripList(next);
+        return next;
+      });
       setPage({ page: "trip", tripId: trip.id, tab: "plan" });
     },
     [setPage],
@@ -159,8 +163,8 @@ export default function App() {
     await deleteTrip(tripId);
     setTrips((prev) => {
       const next = prev.filter((t) => t.id !== tripId);
-      // Đẩy trip gần nhất kế tiếp lên widget NGAY (nếu xoá trúng trip đang hiển thị)
-      void syncNearestTripToWidget(next);
+      // Xoá trip → cập nhật danh sách. Widget nào đang chọn trip này sẽ về "Chưa chọn".
+      void setWidgetTripList(next);
       return next;
     });
   }, []);
@@ -175,9 +179,8 @@ export default function App() {
     setTrips((prev) => {
       const next = prev.map((t) => (t.id === updated.id ? updated : t));
       checkAndNotify(next);
-      // A trip's dates may have changed which trip is "nearest" — recompute and
-      // push the correct one (e.g. moving the soonest trip later promotes another).
-      void syncNearestTripToWidget(next);
+      // Tên/emoji/ngày trip đổi → cập nhật danh sách + để widget fetch lại dữ liệu mới.
+      void setWidgetTripList(next);
       return next;
     });
     if (updated.startDate) {
@@ -199,10 +202,10 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 pt-safe">
+      <div className="min-h-screen flex items-center justify-center bg-paper pt-safe">
         <div className="text-center">
           <img src="/icon-192.png" alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
-          <p className="text-slate-400 text-sm">Đang tải...</p>
+          <p className="text-stone text-sm">Đang tải...</p>
         </div>
       </div>
     );
@@ -225,10 +228,10 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 pt-safe">
+      <div className="min-h-screen flex items-center justify-center bg-paper pt-safe">
         <div className="text-center">
           <img src="/icon-192.png" alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
-          <p className="text-slate-400 text-sm">Đang tải dữ liệu...</p>
+          <p className="text-stone text-sm">Đang tải dữ liệu...</p>
         </div>
       </div>
     );
@@ -254,7 +257,6 @@ export default function App() {
       return (
         <TripDetail
           trip={trip}
-          allTrips={trips}
           initialTab={page.tab}
           onBack={() => setPage({ page: "list" })}
           onTabChange={(tab) => setPage({ page: "trip", tripId: trip.id, tab })}
@@ -276,10 +278,10 @@ export default function App() {
         .catch(() => setPage({ page: "list" }));
     }
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="min-h-screen flex items-center justify-center bg-paper">
         <div className="text-center">
           <img src="/icon-192.png" alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
-          <p className="text-slate-400 text-sm">Đang tải chuyến đi...</p>
+          <p className="text-stone text-sm">Đang tải chuyến đi...</p>
         </div>
       </div>
     );

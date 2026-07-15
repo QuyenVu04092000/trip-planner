@@ -6,7 +6,8 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "WidgetBridgePlugin"
     public let jsName = "WidgetBridge"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "updateWidgetData",   returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setWidgetTripList",  returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "reloadWidget",       returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setWidgetLoggedIn",  returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setWidgetLoggedOut", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readWidgetEcho",     returnType: CAPPluginReturnPromise),
@@ -70,71 +71,33 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func updateWidgetData(_ call: CAPPluginCall) {
-        guard
-            let tripName = call.getString("tripName"),
-            let tripEmoji = call.getString("tripEmoji"),
-            let status = call.getString("status")
-        else {
-            call.reject("Missing required fields")
-            return
+    // Ghi danh sách trip vào App Group (widget_trips.json) cho picker cấu hình widget
+    // đọc, rồi reload. Trip bị xoá khỏi danh sách → widget đang chọn nó tự về
+    // "Chưa chọn chuyến đi" (EntityQuery không resolve được id nữa).
+    @objc func setWidgetTripList(_ call: CAPPluginCall) {
+        let raw = call.getArray("trips") ?? []
+        let items: [[String: String]] = raw.compactMap { $0 as? [String: Any] }.map { obj in
+            [
+                "id":    obj["id"] as? String ?? "",
+                "name":  obj["name"] as? String ?? "",
+                "emoji": obj["emoji"] as? String ?? "",
+            ]
+        }.filter { !($0["id"] ?? "").isEmpty }
+
+        if let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup)?
+            .appendingPathComponent("widget_trips.json"),
+           let data = try? JSONSerialization.data(withJSONObject: items, options: []) {
+            try? data.write(to: url, options: .atomic)
+            print("[Widget] 📋 Trip list saved: \(items.count) trips")
         }
-
-        var data = WidgetTripData(
-            tripId:          call.getString("tripId") ?? "",
-            tripName:        tripName,
-            tripEmoji:       tripEmoji,
-            startDate:       call.getString("startDate"),
-            endDate:         call.getString("endDate"),
-            daysLeft:        call.getInt("daysLeft") ?? 0,
-            status:          status,
-            todayActivities: call.getArray("todayActivities") as? [String] ?? [],
-            fundBalance:     call.getInt("fundBalance") ?? 0,
-            totalSpent:      call.getInt("totalSpent") ?? 0,
-            hasFund:         call.getBool("hasFund") ?? false
-        )
-
-        // Keep existing fund data if new payload has no fund (e.g. app-launch basic update)
-        if !data.hasFund,
-           let prev = Self.loadPayload()?.trip, prev.tripId == data.tripId, prev.hasFund {
-            data.hasFund = prev.hasFund
-            data.fundBalance = prev.fundBalance
-            data.totalSpent = prev.totalSpent
-        }
-
-        Self.savePayload(WidgetPayloadFile(isLoggedIn: true, trip: data))
-
-        // Coalesced reload — fires once after auth/trip/image writes settle.
         Self.scheduleReload()
+        call.resolve()
+    }
 
-        let bgUrlStr = call.getString("backgroundImageUrl")
-        print("[Widget] daysLeft: \(data.daysLeft) | fundBalance: \(data.fundBalance) | hasFund: \(data.hasFund) | bgUrl: \(bgUrlStr ?? "(none)")")
-
-        // Đồng bộ ảnh nền theo ĐÚNG trip hiện tại.
-        if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup) {
-            let fileURL = containerURL.appendingPathComponent("widget_bg.jpg")
-            let markerURL = containerURL.appendingPathComponent("widget_bg_path.txt")
-            if let urlStr = bgUrlStr, let url = URL(string: urlStr) {
-                URLSession.shared.dataTask(with: url) { imageData, response, _ in
-                    if let imageData, !imageData.isEmpty,
-                       (response as? HTTPURLResponse)?.statusCode == 200 {
-                        try? imageData.write(to: fileURL, options: .atomic)
-                        try? url.path.write(to: markerURL, atomically: true, encoding: .utf8)
-                        print("[Widget] ✅ Image saved: \(imageData.count) bytes")
-                    } else {
-                        print("[Widget] ❌ No image data — HTTP: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-                    }
-                    Self.scheduleReload()
-                }.resume()
-            } else {
-                // Trip mới KHÔNG có ảnh → xoá ảnh cũ để không hiện nhầm ảnh trip trước
-                try? FileManager.default.removeItem(at: fileURL)
-                try? FileManager.default.removeItem(at: markerURL)
-                print("[Widget] 🗑️ No bg for this trip — cleared old image")
-                Self.scheduleReload()
-            }
-        }
-
+    // Kích iOS reload widget: dữ liệu trong 1 trip đổi → widget tự fetch lại theo tripId.
+    @objc func reloadWidget(_ call: CAPPluginCall) {
+        Self.scheduleReload()
         call.resolve()
     }
 
@@ -158,6 +121,12 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         Self.savePayload(WidgetPayloadFile(isLoggedIn: false, trip: trip))
         // Clear the shared session so the widget stops fetching.
         Self.saveConfig(nil)
+        // Xoá danh sách trip để picker rỗng khi đăng xuất.
+        if let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup)?
+            .appendingPathComponent("widget_trips.json") {
+            try? FileManager.default.removeItem(at: url)
+        }
         Self.scheduleReload()
         call.resolve()
     }
@@ -255,6 +224,10 @@ struct WidgetTripData: Codable {
     var fundBalance: Int
     var totalSpent: Int
     var hasFund: Bool
+    // Phải khớp struct trong TripWidget.swift để payload mang đủ URL ảnh + lịch
+    // theo ngày → widget hiển thị ĐÚNG trip (không dính ảnh trip cũ).
+    var backgroundImageUrl: String?
+    var schedule: [String: [String]] = [:]
 }
 
 struct WidgetPayloadFile: Codable {
