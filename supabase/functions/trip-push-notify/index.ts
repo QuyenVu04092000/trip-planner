@@ -12,7 +12,7 @@ const VAPID_MAILTO =
 
 webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-const NOTIFY_DAYS = [0, 1, 3, 7]; // trigger on these days before start
+const NOTIFY_DAYS = [0, 1, 2, 3, 4, 5, 6, 7]; // nhắc mỗi ngày trong tuần cuối trước khi đi
 
 function daysUntil(dateStr: string): number {
   const today = new Date();
