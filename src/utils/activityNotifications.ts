@@ -47,7 +47,7 @@ export function scheduleActivityNotifications(activities: Activity[]): void {
 
     const actMs = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
 
-    for (const minutesBefore of [60, 15]) {
+    for (const minutesBefore of [60, 30, 15]) {
       const notifId = `act_${act.id}_${minutesBefore}m`;
 
       // Already shown today or already pending
@@ -59,7 +59,7 @@ export function scheduleActivityNotifications(activities: Activity[]): void {
       // Passed already (or within 5 s — browser throttle too short)
       if (delay < 5_000) continue;
 
-      const label = minutesBefore === 60 ? '1 tiếng' : '15 phút';
+      const label = minutesBefore === 60 ? '1 tiếng' : minutesBefore === 30 ? '30 phút' : '15 phút';
       const body  = act.address
         ? `⏰ Còn ${label} nữa: ${act.activity} — ${act.address}`
         : `⏰ Còn ${label} nữa: ${act.activity}`;

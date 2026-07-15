@@ -2,6 +2,7 @@
 // Called by pg_cron every 5 minutes.
 // Sends push notifications to all trip members for activities starting in:
 //   - 55–65 minutes  → "Còn 1 tiếng nữa"
+//   - 25–35 minutes  → "Còn 30 phút nữa"
 //   - 10–20 minutes  → "Còn 15 phút nữa"
 //
 // Activity date/time is stored in Vietnam local time (UTC+7).
@@ -47,9 +48,10 @@ Deno.serve(async (_req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Two reminder windows
+  // Reminder windows (±5 phút quanh mốc; cron chạy mỗi 5 phút nên không lọt)
   const WINDOWS = [
     { low: 55, high: 65, label: "1 tiếng",  key: "60m" },
+    { low: 25, high: 35, label: "30 phút",  key: "30m" },
     { low: 10, high: 20, label: "15 phút",  key: "15m" },
   ];
 
