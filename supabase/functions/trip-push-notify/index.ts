@@ -14,12 +14,17 @@ webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 const NOTIFY_DAYS = [0, 1, 2, 3, 4, 5, 6, 7]; // nhắc mỗi ngày trong tuần cuối trước khi đi
 
+// Tính số ngày tới theo LỊCH giờ Việt Nam (UTC+7). Trước đây dùng giờ UTC của
+// server → cron bắn lúc 00:00 VN (=17:00 UTC) vẫn tính theo ngày UTC hôm trước
+// nên lệch +1 ngày. Giờ so sánh theo ngày-lịch VN cho khớp thời điểm cron chạy.
 function daysUntil(dateStr: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+  const vnTodayStr = new Date(Date.now() + VN_OFFSET_MS).toISOString().slice(0, 10);
+  const [ty, tm, td] = vnTodayStr.split("-").map(Number);
   const [y, m, d] = dateStr.split("-").map(Number);
-  const start = new Date(y, m - 1, d);
-  return Math.round((start.getTime() - today.getTime()) / 86400000);
+  const today = Date.UTC(ty, tm - 1, td);
+  const start = Date.UTC(y, m - 1, d);
+  return Math.round((start - today) / 86400000);
 }
 
 function buildMessage(days: number, emoji: string, tripName: string) {
