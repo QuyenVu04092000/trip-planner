@@ -61,7 +61,7 @@ export function checkAndNotify(trips: Trip[]): void {
         new Notification("TripMemo ✈️", {
           body,
           tag: notifId,
-          icon: "/favicon.ico",
+          icon: import.meta.env.BASE_URL + "icon-192.png",
         });
         notified.add(notifId);
       } catch {

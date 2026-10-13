@@ -204,7 +204,7 @@ export default function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-paper pt-safe">
         <div className="text-center">
-          <img src="/icon-192.png" alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
+          <img src={import.meta.env.BASE_URL + "icon-192.png"} alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
           <p className="text-stone text-sm">Đang tải...</p>
         </div>
       </div>
@@ -230,7 +230,7 @@ export default function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-paper pt-safe">
         <div className="text-center">
-          <img src="/icon-192.png" alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
+          <img src={import.meta.env.BASE_URL + "icon-192.png"} alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
           <p className="text-stone text-sm">Đang tải dữ liệu...</p>
         </div>
       </div>
@@ -280,7 +280,7 @@ export default function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-paper">
         <div className="text-center">
-          <img src="/icon-192.png" alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
+          <img src={import.meta.env.BASE_URL + "icon-192.png"} alt="TripMemo" className="w-16 h-16 rounded-2xl mx-auto mb-4" />
           <p className="text-stone text-sm">Đang tải chuyến đi...</p>
         </div>
       </div>

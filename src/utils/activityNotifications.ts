@@ -69,7 +69,7 @@ export function scheduleActivityNotifications(activities: Activity[]): void {
           new Notification('TripMemo ✈️', {
             body,
             tag:  notifId,
-            icon: '/icon-192.svg',
+            icon: import.meta.env.BASE_URL + 'icon-192.svg',
           });
           markNotified(notifId);
         } catch {

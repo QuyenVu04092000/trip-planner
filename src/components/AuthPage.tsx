@@ -26,7 +26,7 @@ function HeroPanel() {
       {/* Top: logo */}
       <div className="relative flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0">
-          <img src="/icon-192.png" alt="TripMemo" className="w-full h-full object-cover" />
+          <img src={import.meta.env.BASE_URL + "icon-192.png"} alt="TripMemo" className="w-full h-full object-cover" />
         </div>
         <span className="text-white font-bold text-lg tracking-tight">TripMemo</span>
       </div>
@@ -124,7 +124,7 @@ export default function AuthPage() {
         {/* Mobile-only top bar */}
         <div className="lg:hidden flex items-center gap-2.5 px-5 py-4 border-b border-sand bg-white pt-safe">
           <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0">
-            <img src="/icon-192.png" alt="TripMemo" className="w-full h-full object-cover" />
+            <img src={import.meta.env.BASE_URL + "icon-192.png"} alt="TripMemo" className="w-full h-full object-cover" />
           </div>
           <span className="font-bold text-ink text-base tracking-tight">TripMemo</span>
         </div>

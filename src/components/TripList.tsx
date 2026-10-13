@@ -392,7 +392,7 @@ export default function TripList({
         <div className="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0">
-              <img src="/icon-192.png" alt="TripMemo" className="w-full h-full object-cover" />
+              <img src={import.meta.env.BASE_URL + "icon-192.png"} alt="TripMemo" className="w-full h-full object-cover" />
             </div>
             <div>
               <h1 className="font-bold text-white text-[17px] leading-tight tracking-tight">
