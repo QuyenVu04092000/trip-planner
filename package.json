@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/app-launcher": "^8.0.1",
     "@capacitor/cli": "^8.4.0",
     "@capacitor/core": "^8.4.0",
+    "@capacitor/geolocation": "^8.2.3",
     "@capacitor/ios": "^8.4.0",
     "@supabase/supabase-js": "^2.106.2",
     "exifr": "^7.1.3",

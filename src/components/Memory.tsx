@@ -50,6 +50,7 @@ function getTripDays(startDate?: string, endDate?: string): string[] {
 }
 
 const UPLOAD_CONCURRENCY = 3;
+const PAGE_SIZE = 30; // số ảnh render mỗi trang (cuộn vô tận thêm 30/lần)
 const COMPRESS_MAX_PX = 2000;
 const VIDEO_SIZE_LIMIT = 50 * 1024 * 1024;
 
@@ -74,6 +75,26 @@ async function compressImage(file: File): Promise<File> {
     img.onerror = () => { URL.revokeObjectURL(blobUrl); resolve(file); };
     img.src = blobUrl;
   });
+}
+
+// Chạy fn trên mảng với số tác vụ ĐỒNG THỜI tối đa = limit (giữ đúng thứ tự kết quả).
+// Dùng để KHÔNG giải mã/đọc toàn bộ file cùng lúc — nếu Promise.all cả 80–90 ảnh thì
+// mỗi ảnh giải mã ~40–50MB bitmap → nổ RAM → OS giết app rồi khởi động lại.
+async function runPool<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 // ── Media Card ────────────────────────────────────────────────────────────────
@@ -399,6 +420,11 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
   const [sizeWarning, setSizeWarning] = useState<string | null>(null);
   const [dupWarning, setDupWarning] = useState<string | null>(null);
 
+  // ── Cuộn vô tận: chỉ render dần từng trang, không đổ hết DOM node ─────────────
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
   const tripDays = getTripDays(startDate, endDate);
   const untaggedCount = items.filter((i) => !i.takenAt).length;
   const imageCount = items.filter((i) => i.type === 'image').length;
@@ -410,6 +436,32 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
     : dateFilter
       ? byType.filter((i) => i.takenAt?.startsWith(dateFilter))
       : byType;
+
+  // Đổi bộ lọc → xem lại từ trang đầu.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [filter, dateFilter]);
+
+  // Khi thẻ "sentinel" cuối lọt vào tầm nhìn → tải thêm 1 trang.
+  const hasMore = visibleCount < filtered.length;
+  useEffect(() => {
+    if (!hasMore) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((c) => Math.min(c + PAGE_SIZE, filtered.length));
+        }
+      },
+      { root: scrollRef.current, rootMargin: '400px' }, // nạp trước khi chạm đáy
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, filtered.length]);
+
+  const visible = filtered.slice(0, visibleCount);
 
   const selectedCount = selectedIds.size;
   const allFilteredSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id));
@@ -444,9 +496,10 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
     // changing file size by a few bytes (164 bytes in practice). So name+size
     // is not a stable fingerprint for iCloud videos. The embedded recording
     // timestamp (takenAt) IS stable → use name+takenAt as the primary key.
-    const fileInfos = await Promise.all(
-      all.map(async (f) => ({ file: f, takenAt: await extractTakenAt(f) }))
-    );
+    const fileInfos = await runPool(all, UPLOAD_CONCURRENCY, async (f) => ({
+      file: f,
+      takenAt: await extractTakenAt(f),
+    }));
 
     // ── Duplicate detection ──────────────────────────────────────────────────
     // Check BOTH fingerprints in OR:
@@ -496,30 +549,25 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
     }
     if (validInfos.length === 0) return;
 
-    setUploadProgress({ current: 0, total: validInfos.length, phase: 'compressing' });
-    // takenAt already extracted above — reuse it, no need to call extractTakenAt again
-    const prepared = await Promise.all(
-      validInfos.map(async ({ file, takenAt }) => ({
-        compressed: await compressImage(file),
-        takenAt,
-        originalName: file.name,
-        originalSize: file.size,
-      }))
-    );
+    // Nén + upload theo POOL giới hạn đồng thời: mỗi lúc chỉ UPLOAD_CONCURRENCY ảnh
+    // được giải mã trong RAM. Trước đây nén TẤT CẢ cùng lúc (Promise.all) → 80–90 ảnh
+    // giải mã đồng thời → nổ RAM → app crash & khởi động lại. Gộp nén vào vòng upload
+    // để đỉnh bộ nhớ KHÔNG phụ thuộc số lượng file.
     let done = 0;
-    const newItems: MediaItem[] = [];
     setUploadProgress({ current: 0, total: validInfos.length, phase: 'uploading' });
-    for (let i = 0; i < prepared.length; i += UPLOAD_CONCURRENCY) {
-      const batch = prepared.slice(i, i + UPLOAD_CONCURRENCY);
-      const results = await Promise.all(
-        batch.map(async ({ compressed, takenAt, originalName, originalSize }) => {
-          try { return await uploadMedia(tripId, compressed, takenAt, { name: originalName, size: originalSize }); }
-          catch (err) { console.error('Upload failed:', err); return null; }
-          finally { done++; setUploadProgress({ current: done, total: validInfos.length, phase: 'uploading' }); }
-        }),
-      );
-      newItems.push(...results.filter((r): r is MediaItem => r !== null));
-    }
+    const results = await runPool(validInfos, UPLOAD_CONCURRENCY, async ({ file, takenAt }) => {
+      try {
+        const compressed = await compressImage(file);
+        return await uploadMedia(tripId, compressed, takenAt, { name: file.name, size: file.size });
+      } catch (err) {
+        console.error('Upload failed:', err);
+        return null;
+      } finally {
+        done++;
+        setUploadProgress({ current: done, total: validInfos.length, phase: 'uploading' });
+      }
+    });
+    const newItems = results.filter((r): r is MediaItem => r !== null);
     if (newItems.length > 0) onChange([...items, ...newItems]);
     setUploadProgress(null);
   };
@@ -737,6 +785,7 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
 
       {/* ── Content area ── */}
       <div
+        ref={scrollRef}
         className={`flex-1 overflow-auto p-4 transition-colors duration-200 ${dragOver ? 'bg-terra-pale' : ''}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -776,7 +825,7 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
         ) : (
           /* Grid */
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {filtered.map((item, idx) => (
+            {visible.map((item, idx) => (
               <MediaCard
                 key={item.id}
                 item={item}
@@ -789,8 +838,18 @@ export default function Memory({ tripId, items, onChange, startDate, endDate }: 
               />
             ))}
 
-            {/* Add more card */}
-            {!selectMode && (
+            {/* Sentinel: lọt tầm nhìn → tải thêm 1 trang (cuộn vô tận) */}
+            {hasMore && (
+              <div
+                ref={sentinelRef}
+                className="col-span-full flex items-center justify-center py-6 text-dune text-xs"
+              >
+                Đang tải thêm…
+              </div>
+            )}
+
+            {/* Add more card — chỉ hiện khi đã render hết ảnh */}
+            {!selectMode && !hasMore && (
               <div
                 onClick={() => fileInputRef.current?.click()}
                 className="border-2 border-dashed border-sand rounded-xl flex flex-col items-center justify-center gap-2 text-dune hover:text-terra hover:border-terra/40 hover:bg-terra-pale/50 cursor-pointer transition-all"

@@ -4,6 +4,9 @@ import type { Trip, AppPage } from "./types";
 import { fetchTrips, createTrip, deleteTrip } from "./utils/db";
 import { supabase } from "./utils/supabase";
 import { checkAndNotify } from "./utils/notifications";
+import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
+import type { PluginListenerHandle } from "@capacitor/core";
 import {
   setWidgetLoggedIn,
   setWidgetLoggedOut,
@@ -115,7 +118,23 @@ export default function App() {
         if (event === "SIGNED_OUT") void setWidgetLoggedOut();
       }
     });
-    return () => subscription.unsubscribe();
+
+    // Mỗi khi app quay lại foreground (vd bấm widget), widget CÓ THỂ đã xoay refresh
+    // token trong lúc app ở nền → adopt lại token mới nhất từ App Group TRƯỚC khi
+    // supabase-js tự refresh bằng token cũ (đã vô hiệu) và đá người dùng ra login.
+    let appStateHandle: PluginListenerHandle | undefined;
+    if (Capacitor.isNativePlatform()) {
+      void CapApp.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) void adoptWidgetAuth();
+      }).then((h) => {
+        appStateHandle = h;
+      });
+    }
+
+    return () => {
+      subscription.unsubscribe();
+      void appStateHandle?.remove();
+    };
   }, []);
 
   useEffect(() => {

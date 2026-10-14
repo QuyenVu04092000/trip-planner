@@ -1,6 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { Session } from '@supabase/supabase-js';
-import type { Trip } from '../types';
+import type { Trip, Activity, TripExpense, TripFund, TripFundPayment, MediaItem } from '../types';
 import { supabase } from './supabase';
 
 // ── Plugin interface ──────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ interface WidgetTripListItem {
 
 interface WidgetBridgePlugin {
   setWidgetTripList(data: { trips: WidgetTripListItem[] }): Promise<void>;
+  writeWidgetTripCache(data: object): Promise<void>;
   reloadWidget(): Promise<void>;
   setWidgetLoggedIn(): Promise<void>;
   setWidgetLoggedOut(): Promise<void>;
@@ -64,6 +65,84 @@ export async function reloadWidget(): Promise<void> {
     console.log('[Widget] reloadWidget OK');
   } catch (e) {
     console.error('[Widget] reloadWidget FAILED:', e);
+  }
+}
+
+// LAI: app tính sẵn data của 1 trip rồi ghi thẳng vào cache widget (native ghi
+// widget_data_<tripId>.json + tải ảnh). Widget đọc cache → hiện NGAY khi reload,
+// không phải chờ self-fetch qua mạng. Gọi khi app đang mở & dữ liệu trip đổi.
+export async function warmWidgetTripCache(params: {
+  trip: Pick<Trip, 'id' | 'name' | 'emoji' | 'startDate' | 'endDate'>;
+  activities: Activity[];
+  expenses: TripExpense[];
+  funds: TripFund[];
+  fundPayments: TripFundPayment[];
+  media?: MediaItem[];
+}): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  const { trip, activities, expenses, funds, fundPayments, media } = params;
+
+  const now = new Date();
+  const todayStr = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+
+  let status: 'upcoming' | 'ongoing' | 'past' = 'past';
+  if (todayStr >= trip.startDate && todayStr <= trip.endDate) status = 'ongoing';
+  else if (todayStr < trip.startDate) status = 'upcoming';
+
+  const [sy, sm, sd] = trip.startDate.split('-').map(Number);
+  const diffMs = new Date(sy, sm - 1, sd).getTime() - new Date().setHours(0, 0, 0, 0);
+  const daysLeft = Math.max(0, Math.ceil(diffMs / 86_400_000));
+
+  const hasFund = funds.length > 0;
+  const totalFund = funds.reduce((s, f) => {
+    const paid = fundPayments.filter((p) => p.fundId === f.id && p.paid).length;
+    return s + paid * f.amountPerPerson;
+  }, 0);
+  const fundBalance = totalFund - expenses.filter((e) => e.fundId).reduce((s, e) => s + e.amount, 0);
+  const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
+
+  let backgroundImageUrl: string | undefined;
+  if (media && media.length > 0) {
+    const dayIdx = Math.floor((Date.now() + 7 * 60 * 60 * 1000) / 86_400_000);
+    const item = media[dayIdx % media.length];
+    backgroundImageUrl = item.thumbnailUrl ?? item.publicUrl;
+  }
+
+  // schedule["yyyy-MM-dd"] = ["timename"] — widget tách trên  (khớp edge fn).
+  const schedule: Record<string, string[]> = {};
+  for (const a of activities) {
+    if (!a.date) continue;
+    (schedule[a.date] ??= []).push(`${a.time || ''}${a.activity}`);
+  }
+  for (const d of Object.keys(schedule)) {
+    schedule[d].sort((x, y) =>
+      (x.split('')[0] || '99:99').localeCompare(y.split('')[0] || '99:99'),
+    );
+  }
+
+  try {
+    await WidgetBridge.writeWidgetTripCache({
+      tripId: trip.id,
+      tripName: trip.name,
+      tripEmoji: trip.emoji,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      daysLeft,
+      status,
+      todayActivities: schedule[todayStr] ?? [],
+      schedule,
+      fundBalance,
+      totalSpent,
+      hasFund,
+      backgroundImageUrl,
+    });
+    console.log('[Widget] warmWidgetTripCache OK — tripId:', trip.id);
+  } catch (e) {
+    console.error('[Widget] warmWidgetTripCache FAILED:', e);
   }
 }
 

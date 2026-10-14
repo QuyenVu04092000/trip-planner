@@ -58,9 +58,12 @@ struct WidgetTripData: Codable, Sendable {
 
 struct TripWidgetEntry: TimelineEntry {
     let date: Date
-    let data: WidgetTripData?   // nil = chưa chọn trip / trip đã xoá
+    let data: WidgetTripData?   // nil = chưa chọn trip / hoặc đã chọn mà đang tải
     let isLoggedIn: Bool
     let tripId: String?         // id trip đang cấu hình (để nạp ảnh nền theo trip)
+    // Tên trip đã chọn (lấy từ intent) — để khi data==nil mà ĐÃ chọn trip thì hiện
+    // tên + "đang cập nhật", KHÔNG hiện nhầm "Chưa chọn chuyến đi".
+    var selectedName: String? = nil
 }
 
 struct WidgetPayloadFile: Codable, Sendable {
@@ -184,6 +187,12 @@ struct TripWidgetProvider: AppIntentTimelineProvider {
     }
 
     private static func finalize(_ payload: WidgetPayloadFile, tripId: String) async {
+        // Đừng ghi đè cache TỐT bằng trip:null (lỗi tạm / trả rỗng) — giữ dữ liệu cũ để
+        // widget không nhấp nháy về trạng thái trống rồi kẹt luôn.
+        if payload.trip == nil, loadPayload(tripId)?.trip != nil {
+            writeEcho("ok:kept-cache:trip=nil")
+            return
+        }
         savePayload(payload, tripId: tripId)
         writeEcho("ok:trip=\(payload.trip?.tripId ?? "nil"):days=\(payload.trip?.daysLeft ?? -1)")
         await syncBackgroundImage(payload.trip?.backgroundImageUrl, tripId: tripId)
@@ -304,16 +313,21 @@ struct TripWidgetProvider: AppIntentTimelineProvider {
             return Timeline(entries: [e], policy: .after(next))
         }
 
-        // Fetch dữ liệu trip đã chọn (fresh); lỗi mạng thì dùng cache.
+        // Fetch dữ liệu trip đã chọn (fresh).
         let fresh = await WidgetDataLoader.shared.load(key: tripId) {
             await Self.fetchRemotePayload(tripId: tripId)
         }
-        let payload = fresh ?? Self.loadPayload(tripId)
+        // ƯU TIÊN fresh CHỈ khi nó có trip THẬT. Nếu fresh rỗng/trip:null (lỗi tạm,
+        // server trả rỗng) thì DÙNG CACHE app đã warm — nếu không, self-fetch null sẽ
+        // đè lên cache tốt và widget kẹt ở "Đang cập nhật".
+        let payload: WidgetPayloadFile? = (fresh?.trip != nil) ? fresh : (Self.loadPayload(tripId) ?? fresh)
 
-        // trip:null (đã xoá / mất quyền) hoặc chưa có cache → "Chưa chọn chuyến đi".
+        // ĐÃ chọn trip nhưng chưa lấy được data (auth/mạng chập, chưa có cache) →
+        // KHÔNG hiện "Chưa chọn". Hiện tên trip đã chọn + "đang cập nhật", thử lại sớm.
         guard let base = payload?.trip else {
-            let e = TripWidgetEntry(date: Date(), data: nil, isLoggedIn: true, tripId: tripId)
-            return Timeline(entries: [e], policy: .after(next))
+            let e = TripWidgetEntry(date: Date(), data: nil, isLoggedIn: true,
+                                    tripId: tripId, selectedName: configuration.trip?.name)
+            return Timeline(entries: [e], policy: .after(Date().addingTimeInterval(5 * 60)))
         }
 
         // Entries theo ngày → đếm ngược vẫn chạy dù iOS bỏ vài lần refresh.
@@ -784,6 +798,26 @@ struct EmptyStateView: View {
     }
 }
 
+// Đã chọn trip nhưng data chưa về (đang tải / lỗi tạm) — hiện tên trip, KHÔNG hiện
+// "Chưa chọn chuyến đi" (tránh gây hiểu nhầm là mất lựa chọn).
+struct LoadingView: View {
+    let name: String?
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(name ?? "Chuyến đi")
+                .font(.system(size: 14, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text("Đang cập nhật…")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.white.opacity(0.75))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(12)
+    }
+}
+
 // MARK: - Entry view + Widget
 
 struct TripWidgetView: View {
@@ -798,6 +832,9 @@ struct TripWidgetView: View {
             case .systemMedium: TripWidgetMediumView(data: data)
             default:            TripWidgetSmallView(data: data)
             }
+        } else if entry.tripId != nil {
+            // Đã chọn trip, data đang tải → hiện tên trip, không phải "chưa chọn".
+            LoadingView(name: entry.selectedName)
         } else {
             EmptyStateView()
         }

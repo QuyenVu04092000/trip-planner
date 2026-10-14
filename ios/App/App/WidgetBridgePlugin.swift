@@ -7,6 +7,7 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "WidgetBridge"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "setWidgetTripList",  returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "writeWidgetTripCache", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reloadWidget",       returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setWidgetLoggedIn",  returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setWidgetLoggedOut", returnType: CAPPluginReturnPromise),
@@ -97,6 +98,79 @@ public class WidgetBridgePlugin: CAPPlugin, CAPBridgedPlugin {
 
     // Kích iOS reload widget: dữ liệu trong 1 trip đổi → widget tự fetch lại theo tripId.
     @objc func reloadWidget(_ call: CAPPluginCall) {
+        Self.scheduleReload()
+        call.resolve()
+    }
+
+    // LAI: app tính sẵn data của 1 trip rồi ghi THẲNG vào cache widget đọc
+    // (widget_data_<tripId>.json + widget_bg_<tripId>.jpg). Nhờ vậy khi reload, widget
+    // đọc cache local → hiện NGAY (không chờ mạng self-fetch). Self-fetch vẫn chạy để
+    // xác nhận. Gọi khi app đang mở và sửa trip đó.
+    @objc func writeWidgetTripCache(_ call: CAPPluginCall) {
+        guard let tripId = call.getString("tripId"), !tripId.isEmpty else {
+            call.reject("Missing tripId"); return
+        }
+        let bgUrlStr = call.getString("backgroundImageUrl")
+
+        var schedule: [String: [String]] = [:]
+        if let raw = call.getObject("schedule") {
+            for (key, value) in raw {
+                if let arr = value as? [String] { schedule[key] = arr }
+                else if let anyArr = value as? [Any] { schedule[key] = anyArr.compactMap { $0 as? String } }
+            }
+        }
+
+        let data = WidgetTripData(
+            tripId:          tripId,
+            tripName:        call.getString("tripName") ?? "",
+            tripEmoji:       call.getString("tripEmoji") ?? "✈️",
+            startDate:       call.getString("startDate"),
+            endDate:         call.getString("endDate"),
+            daysLeft:        call.getInt("daysLeft") ?? 0,
+            status:          call.getString("status") ?? "upcoming",
+            todayActivities: call.getArray("todayActivities") as? [String] ?? [],
+            fundBalance:     call.getInt("fundBalance") ?? 0,
+            totalSpent:      call.getInt("totalSpent") ?? 0,
+            hasFund:         call.getBool("hasFund") ?? false,
+            backgroundImageUrl: bgUrlStr,
+            schedule:        schedule
+        )
+
+        guard let containerURL = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup) else {
+            call.resolve(); return
+        }
+
+        // Ghi cache payload theo trip (đúng tên file widget đọc).
+        let dataURL = containerURL.appendingPathComponent("widget_data_\(tripId).json")
+        if let encoded = try? JSONEncoder().encode(WidgetPayloadFile(isLoggedIn: true, trip: data)) {
+            try? encoded.write(to: dataURL, options: .atomic)
+        }
+
+        // Ảnh nền theo trip (dedup theo path — signed URL đổi token mỗi lần).
+        let fileURL = containerURL.appendingPathComponent("widget_bg_\(tripId).jpg")
+        let markerURL = containerURL.appendingPathComponent("widget_bg_path_\(tripId).txt")
+        let currentPath = try? String(contentsOf: markerURL, encoding: .utf8)
+        let newPath = bgUrlStr.flatMap { URL(string: $0)?.path }
+
+        if let urlStr = bgUrlStr, let url = URL(string: urlStr) {
+            if currentPath != newPath || !FileManager.default.fileExists(atPath: fileURL.path) {
+                var req = URLRequest(url: url); req.timeoutInterval = 20
+                URLSession.shared.dataTask(with: req) { imageData, response, _ in
+                    if let imageData, !imageData.isEmpty,
+                       (response as? HTTPURLResponse)?.statusCode == 200 {
+                        try? imageData.write(to: fileURL, options: .atomic)
+                        try? url.path.write(to: markerURL, atomically: true, encoding: .utf8)
+                    }
+                    Self.scheduleReload()
+                }.resume()
+            }
+        } else {
+            // Trip không còn ảnh → xoá ảnh cũ để không dính ảnh cũ.
+            try? FileManager.default.removeItem(at: fileURL)
+            try? FileManager.default.removeItem(at: markerURL)
+        }
+
         Self.scheduleReload()
         call.resolve()
     }
