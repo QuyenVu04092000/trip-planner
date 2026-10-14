@@ -5,11 +5,14 @@ import MapPicker from './MapPicker';
 interface Props {
   value: string;
   onChange: (value: string, coords?: { lat: number; lon: number }) => void;
+  // Toạ độ đã lưu của `value` (nếu có) → MapPicker ghim đúng chỗ khi mở lại.
+  lat?: number | null;
+  lon?: number | null;
   placeholder?: string;
   className?: string;
 }
 
-export default function PlacesAutocomplete({ value, onChange, placeholder, className }: Props) {
+export default function PlacesAutocomplete({ value, onChange, lat, lon, placeholder, className }: Props) {
   const [mapOpen, setMapOpen] = useState(false);
 
   function handleSelect(address: string, lat?: number, lon?: number) {
@@ -52,6 +55,7 @@ export default function PlacesAutocomplete({ value, onChange, placeholder, class
           onSelect={handleSelect}
           onClose={() => setMapOpen(false)}
           initialValue={value}
+          initialCoords={value && lat != null && lon != null ? { lat, lon } : null}
         />
       )}
     </>

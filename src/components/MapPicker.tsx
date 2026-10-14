@@ -2,37 +2,47 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { X, MapPin, Check, Search, Loader2, ExternalLink } from "lucide-react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { suggestPlaces, getPlaceDetails, newSessionToken } from "../utils/places";
+import { MAPBOX_TOKEN, forwardGeocode } from "../utils/mapbox";
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+// Bản đồ nền + thả ghim = Mapbox (không phụ thuộc billing Google).
+// Ô tìm kiếm = Google Places (edge function `places`); nếu Google lỗi → tự chuyển
+// sang Mapbox Search Box để không chết tìm kiếm.
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
 interface Props {
   onSelect: (address: string, lat?: number, lon?: number) => void;
   onClose: () => void;
   initialValue?: string;
+  // Toạ độ đã lưu của địa chỉ cũ → đặt ghim thẳng, khỏi geocode lại theo tên.
+  initialCoords?: { lat: number; lon: number } | null;
 }
 
 interface Suggestion {
-  mapbox_id: string;
-  name: string;
-  place_formatted: string;
-  full_address?: string;
+  id: string;
+  mainText: string;
+  secondaryText: string;
+  source: "google" | "mapbox";
 }
 
-// Search Box API – suggest (gợi ý nhanh, có POI)
-async function suggestPlaces(
-  q: string,
-  sessionToken: string,
-): Promise<Suggestion[]> {
-  const url = `https://api.mapbox.com/search/searchbox/v1/suggest?q=${encodeURIComponent(q)}&access_token=${MAPBOX_TOKEN}&session_token=${sessionToken}&language=vi&country=VN&limit=6`;
+// Mapbox Search Box – suggest (dự phòng khi Google Places lỗi, toàn cầu)
+async function mapboxSuggest(q: string, sessionToken: string): Promise<Suggestion[]> {
+  const url = `https://api.mapbox.com/search/searchbox/v1/suggest?q=${encodeURIComponent(q)}&access_token=${MAPBOX_TOKEN}&session_token=${sessionToken}&language=vi&limit=6`;
   const res = await fetch(url);
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(`mapbox suggest HTTP ${res.status}`);
   const data = await res.json();
-  return data.suggestions ?? [];
+  return (data.suggestions ?? []).map(
+    (s: { mapbox_id: string; name: string; place_formatted?: string }) => ({
+      id: s.mapbox_id,
+      mainText: s.name,
+      secondaryText: s.place_formatted ?? "",
+      source: "mapbox" as const,
+    }),
+  );
 }
 
-// Search Box API – retrieve (lấy tọa độ khi user chọn)
-async function retrievePlace(
+// Mapbox Search Box – retrieve (lấy toạ độ khi chọn gợi ý Mapbox)
+async function mapboxRetrieve(
   mapboxId: string,
   sessionToken: string,
 ): Promise<{ lat: number; lon: number; name: string } | null> {
@@ -42,43 +52,37 @@ async function retrievePlace(
   const data = await res.json();
   const feature = data.features?.[0];
   if (!feature) return null;
+  const p = feature.properties ?? {};
+  const address: string | undefined = p.full_address ?? p.place_formatted;
   return {
-    name: feature.properties.full_address ?? feature.properties.name,
+    name: p.name && address && !address.startsWith(p.name) ? `${p.name}, ${address}` : address ?? p.name,
     lon: feature.geometry.coordinates[0],
     lat: feature.geometry.coordinates[1],
   };
 }
 
-// Geocoding API – forward geocode địa chỉ ban đầu để lấy tọa độ
-async function forwardGeocode(address: string): Promise<{ lat: number; lon: number } | null> {
-  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_TOKEN}&language=vi&limit=1`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const data = await res.json();
-  const f = data.features?.[0];
-  if (!f) return null;
-  return { lon: f.center[0], lat: f.center[1] };
-}
-
-// Geocoding API – reverse geocode khi click map
+// Mapbox Geocoding – reverse geocode khi click bản đồ
 async function reverseGeocode(lat: number, lon: number): Promise<string> {
+  const fallback = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${MAPBOX_TOKEN}&language=vi&limit=1`;
   const res = await fetch(url);
-  if (!res.ok) return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  if (!res.ok) return fallback;
   const data = await res.json();
-  return (
-    data.features?.[0]?.place_name ?? `${lat.toFixed(5)}, ${lon.toFixed(5)}`
-  );
+  return data.features?.[0]?.place_name ?? fallback;
 }
 
-export default function MapPicker({ onSelect, onClose, initialValue = "" }: Props) {
+export default function MapPicker({ onSelect, onClose, initialValue = "", initialCoords }: Props) {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const selectedRef = useRef<{ lat: number; lon: number } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Session token: 1 UUID per lần mở MapPicker (Mapbox billing theo session)
-  const sessionToken = useRef(crypto.randomUUID());
+  // Session token Google Places (autocomplete + 1 details = 1 session billing).
+  // Tạo token mới sau mỗi lần chọn xong (kết thúc 1 session).
+  // Dùng chung cho Mapbox Search Box (cũng tính theo session).
+  const sessionToken = useRef(newSessionToken());
+  // Google lỗi 1 lần (billing tắt…) → các lần gõ sau đi thẳng Mapbox, đỡ chờ.
+  const googleDownRef = useRef(false);
 
   const [query, setQuery] = useState(initialValue);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -103,11 +107,16 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
 
     map.addControl(new mapboxgl.NavigationControl(), "top-left");
 
-    // Nếu có địa chỉ cũ, geocode để đặt marker đúng vị trí
-    if (initialValue) {
-      forwardGeocode(initialValue).then((pos) => {
-        if (pos) placeMarker(map, pos.lat, pos.lon);
-      });
+    // Có toạ độ đã lưu → ghim thẳng. Chỉ có chữ → geocode Mapbox (đúng với địa chỉ
+    // đầy đủ; tên ngắn kiểu "Hồ Gươm" có thể lệch nên toạ độ lưu sẵn được ưu tiên).
+    if (initialCoords) {
+      placeMarker(map, initialCoords.lat, initialCoords.lon);
+    } else if (initialValue) {
+      forwardGeocode(initialValue)
+        .then((pos) => {
+          if (pos && mapRef.current === map) placeMarker(map, pos.lat, pos.lon);
+        })
+        .catch(() => {});
     }
 
     map.on("click", async (e) => {
@@ -115,15 +124,20 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
       placeMarker(map, lat, lng);
       setShowDropdown(false);
       setReversing(true);
-      const addr = await reverseGeocode(lat, lng);
-      setSelectedAddress(addr);
-      setReversing(false);
+      try {
+        setSelectedAddress(await reverseGeocode(lat, lng));
+      } catch {
+        setSelectedAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      } finally {
+        setReversing(false);
+      }
     });
 
     mapRef.current = map;
 
     return () => {
       map.remove();
+      markerRef.current = null;
       mapRef.current = null;
     };
   }, []);
@@ -141,6 +155,25 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
     });
   }
 
+  // Google Places trước; lỗi → Mapbox Search Box.
+  async function fetchSuggestions(q: string): Promise<Suggestion[]> {
+    if (!googleDownRef.current) {
+      try {
+        const items = await suggestPlaces(q, sessionToken.current);
+        return items.map((s) => ({
+          id: s.placeId,
+          mainText: s.mainText,
+          secondaryText: s.secondaryText,
+          source: "google" as const,
+        }));
+      } catch (e) {
+        console.warn("[places] Google suggest failed → dùng Mapbox:", e);
+        googleDownRef.current = true;
+      }
+    }
+    return mapboxSuggest(q, sessionToken.current);
+  }
+
   const handleSearch = useCallback((value: string) => {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -153,10 +186,16 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const data = await suggestPlaces(value, sessionToken.current);
+        const data = await fetchSuggestions(value);
         setSuggestions(data);
         setShowDropdown(data.length > 0);
         setNoResults(data.length === 0);
+      } catch (e) {
+        // Cả 2 nguồn lỗi (mạng…) → không treo, hiện fallback "Tìm trên Google Maps".
+        console.error("[places] suggest failed:", e);
+        setSuggestions([]);
+        setShowDropdown(false);
+        setNoResults(true);
       } finally {
         setSearching(false);
       }
@@ -165,16 +204,33 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
 
   async function selectSuggestion(s: Suggestion) {
     setShowDropdown(false);
-    setQuery(s.full_address ?? `${s.name}, ${s.place_formatted}`);
+    setQuery([s.mainText, s.secondaryText].filter(Boolean).join(", "));
     setRetrieving(true);
     try {
-      const detail = await retrievePlace(s.mapbox_id, sessionToken.current);
-      if (detail && mapRef.current) {
-        placeMarker(mapRef.current, detail.lat, detail.lon);
-        setSelectedAddress(detail.name);
+      if (s.source === "google") {
+        const detail = await getPlaceDetails(s.id, sessionToken.current);
+        if (detail.lat != null && detail.lon != null && mapRef.current) {
+          placeMarker(mapRef.current, detail.lat, detail.lon);
+        }
+        // Lưu "Tên, Địa chỉ" cho dễ đọc; toạ độ Google đã gắn vào selectedRef qua placeMarker.
+        setSelectedAddress(
+          detail.name && detail.address && !detail.address.startsWith(detail.name)
+            ? `${detail.name}, ${detail.address}`
+            : detail.address || detail.name,
+        );
+      } else {
+        const detail = await mapboxRetrieve(s.id, sessionToken.current);
+        if (detail && mapRef.current) {
+          placeMarker(mapRef.current, detail.lat, detail.lon);
+          setSelectedAddress(detail.name);
+        }
       }
+    } catch (e) {
+      console.error("[places] details failed:", e);
     } finally {
       setRetrieving(false);
+      // Kết thúc 1 session Places → token mới cho lần tìm sau.
+      sessionToken.current = newSessionToken();
     }
   }
 
@@ -222,9 +278,19 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
         >
           {suggestions.length > 0 ? (
             <>
+              {/* Nguồn kết quả — cả danh sách luôn cùng 1 nguồn */}
+              {suggestions[0].source === "mapbox" ? (
+                <p className="px-4 py-1.5 text-[11px] bg-amber-50 text-amber-800 border-b border-sand/60">
+                  Kết quả từ Mapbox · Google đang lỗi, có thể kém chính xác
+                </p>
+              ) : (
+                <p className="px-4 py-1.5 text-[11px] text-stone bg-paper border-b border-sand/60">
+                  Kết quả từ Google
+                </p>
+              )}
               {suggestions.map((s) => (
                 <button
-                  key={s.mapbox_id}
+                  key={s.id}
                   onMouseDown={() => selectSuggestion(s)}
                   className="w-full flex items-start gap-2.5 px-4 py-3 hover:bg-paper transition-colors text-left border-b border-sand/40 last:border-0"
                 >
@@ -234,10 +300,10 @@ export default function MapPicker({ onSelect, onClose, initialValue = "" }: Prop
                   />
                   <div>
                     <p className="text-sm text-ink leading-snug">
-                      {s.name}
+                      {s.mainText}
                     </p>
                     <p className="text-xs text-stone mt-0.5">
-                      {s.full_address}
+                      {s.secondaryText}
                     </p>
                   </div>
                 </button>

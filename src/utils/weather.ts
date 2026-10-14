@@ -12,7 +12,7 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 // Geocode tên điểm đến → toạ độ (Mapbox).
 export async function geocodePlace(q: string): Promise<{ lat: number; lon: number } | null> {
   if (!q) return null;
-  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&language=vi&country=VN&limit=1`;
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&language=vi&limit=1`;
   try {
     const res = await fetch(url);
     if (!res.ok) return null;

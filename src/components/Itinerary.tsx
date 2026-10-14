@@ -6,12 +6,14 @@ import {
   CalendarDays,
   Navigation,
   Shuffle,
+  Loader2,
 } from "lucide-react";
 import PlacesAutocomplete from "./PlacesAutocomplete";
 import type { Activity, BackupAddress } from "../types";
-import { optimizeOrder } from "../utils/routeOptimize";
+import { optimizeOrderByRoad } from "../utils/routeOptimize";
+import { forwardGeocode } from "../utils/mapbox";
+import NavigationView, { type NavStop } from "./NavigationView";
 import { geocodePlace, fetchWeather, weatherInfo, type DayWeather } from "../utils/weather";
-import { openDirections } from "../utils/maps";
 import DatePicker from "./DatePicker";
 import TimePicker from "./TimePicker";
 
@@ -177,12 +179,14 @@ function Card({
   onEdit,
   onDelete,
   onNavigate,
+  onNavigateBackup,
 }: {
   act: Activity;
   color: Palette;
   onEdit: () => void;
   onDelete: () => void;
   onNavigate: () => void;
+  onNavigateBackup: (b: BackupAddress) => void;
 }) {
   return (
     <div
@@ -254,7 +258,7 @@ function Card({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      openDirections(b);
+                      onNavigateBackup(b);
                     }}
                     className="flex items-center gap-0.5 text-[10px] font-semibold text-terra bg-terra-pale px-1.5 py-0.5 rounded-full flex-shrink-0 active:bg-terra-pale transition-colors"
                   >
@@ -353,6 +357,8 @@ function EditForm({
         </span>
         <PlacesAutocomplete
           value={form.address}
+          lat={form.lat}
+          lon={form.lon}
           onChange={(v, coords) =>
             onChange({ ...form, address: v, lat: coords?.lat ?? null, lon: coords?.lon ?? null })
           }
@@ -372,6 +378,8 @@ function EditForm({
               <div className="flex-1">
                 <PlacesAutocomplete
                   value={b.address}
+                  lat={b.lat}
+                  lon={b.lon}
                   onChange={(v, coords) => {
                     const next = [...(form.backups ?? [])];
                     next[i] = { address: v, lat: coords?.lat ?? null, lon: coords?.lon ?? null };
@@ -459,6 +467,9 @@ export default function Itinerary({
   const [addDate, setAddDate] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(BLANK);
   const [saving, setSaving] = useState(false);
+  const [optimizingDate, setOptimizingDate] = useState<string | null>(null);
+  const [navStops, setNavStops] = useState<NavStop[] | null>(null);
+  const [navPreparing, setNavPreparing] = useState(false);
   const [weather, setWeather] = useState<Record<string, DayWeather>>({});
 
   // Dự báo thời tiết cho điểm đến. Ưu tiên toạ độ lưu sẵn của trip; không có
@@ -538,16 +549,60 @@ export default function Itinerary({
     }
   };
 
-  // Tối ưu thứ tự các hoạt động trong 1 ngày theo tuyến gần nhau nhất.
-  // Giữ nguyên tập giá trị position của ngày đó → không ảnh hưởng ngày khác.
-  const optimizeDay = async (acts: Activity[]) => {
-    const order = optimizeOrder(acts);
-    const positions = acts.map((a) => a.position).sort((x, y) => x - y);
-    for (let k = 0; k < order.length; k++) {
-      const act = acts[order[k]];
-      if (act.position !== positions[k]) await onUpdate(act.id, { position: positions[k] });
+  // Tối ưu thứ tự các hoạt động trong 1 ngày theo thời gian lái xe thật (Mapbox);
+  // lỗi mạng tự lùi về đường chim bay. Giữ nguyên tập giá trị position của ngày đó
+  // → không ảnh hưởng ngày khác.
+  const optimizeDay = async (date: string, acts: Activity[]) => {
+    setOptimizingDate(date);
+    try {
+      const order = await optimizeOrderByRoad(acts);
+      const positions = acts.map((a) => a.position).sort((x, y) => x - y);
+      for (let k = 0; k < order.length; k++) {
+        const act = acts[order[k]];
+        if (act.position !== positions[k]) await onUpdate(act.id, { position: positions[k] });
+      }
+    } finally {
+      setOptimizingDate(null);
     }
   };
+
+  // Hoạt động / địa chỉ → điểm dừng dẫn đường. Thiếu toạ độ (gõ tay) → geocode
+  // trước. Không ra toạ độ → bỏ qua.
+  const toStop = async (
+    name: string,
+    p: { address?: string; lat?: number | null; lon?: number | null },
+  ): Promise<NavStop | null> => {
+    if (p.lat != null && p.lon != null) return { name, lat: p.lat, lon: p.lon };
+    if (!p.address) return null;
+    const g = await forwardGeocode(p.address).catch(() => null);
+    return g ? { name, ...g } : null;
+  };
+
+  const startNav = async (
+    targets: { name: string; address?: string; lat?: number | null; lon?: number | null }[],
+  ) => {
+    setNavPreparing(true);
+    try {
+      const stops = (await Promise.all(targets.map((t) => toStop(t.name, t)))).filter(
+        (s): s is NavStop => s !== null,
+      );
+      if (stops.length === 0) {
+        alert("Không xác định được vị trí của địa điểm này. Hãy chọn lại địa chỉ trên bản đồ.");
+        return;
+      }
+      setNavStops(stops);
+    } finally {
+      setNavPreparing(false);
+    }
+  };
+
+  const navActivity = (act: Activity) =>
+    void startNav([{ name: act.activity || act.address, ...act }]);
+  const navBackup = (act: Activity, b: BackupAddress) =>
+    void startNav([{ name: `${act.activity || "Dự phòng"} (dự phòng)`, ...b }]);
+  // Dẫn cả ngày: đi lần lượt qua mọi điểm có địa chỉ, đúng thứ tự trong lịch.
+  const navDay = (acts: Activity[]) =>
+    void startNav(acts.filter((a) => a.address).map((a) => ({ name: a.activity || a.address, ...a })));
 
   const isEditing = editId !== null || addDate !== null;
   const isEmpty = activities.length === 0 && !isEditing;
@@ -615,16 +670,37 @@ export default function Itinerary({
                   );
                 })()}
                 <div className="flex-1 h-px bg-parchment min-w-4" />
+              </div>
+
+              {/* Hành động cho cả ngày — hàng riêng để không đẩy ngày tháng bị cắt trên điện thoại */}
+              {(acts.filter((a) => a.lat != null && a.lon != null).length >= 3 ||
+                acts.filter((a) => a.address).length >= 2) && (
+              <div className="flex justify-end gap-2 -mt-3 mb-4">
                 {acts.filter((a) => a.lat != null && a.lon != null).length >= 3 && (
                   <button
-                    onClick={() => void optimizeDay(acts)}
-                    title="Sắp xếp theo tuyến gần nhau nhất"
-                    className="flex items-center gap-1 text-[11px] font-semibold text-terra-dark bg-parchment hover:bg-parchment px-2 py-1 rounded-full flex-shrink-0 transition-colors"
+                    onClick={() => void optimizeDay(date, acts)}
+                    disabled={optimizingDate !== null}
+                    title="Sắp xếp theo thời gian lái xe thực tế"
+                    className="flex items-center gap-1 text-[11px] font-semibold text-terra-dark bg-parchment hover:bg-parchment disabled:opacity-60 px-2 py-1 rounded-full flex-shrink-0 transition-colors"
                   >
-                    <Shuffle size={12} /> Tối ưu tuyến
+                    {optimizingDate === date ? (
+                      <><Loader2 size={12} className="animate-spin" /> Đang tối ưu…</>
+                    ) : (
+                      <><Shuffle size={12} /> Tối ưu tuyến</>
+                    )}
+                  </button>
+                )}
+                {acts.filter((a) => a.address).length >= 2 && (
+                  <button
+                    onClick={() => navDay(acts)}
+                    title="Dẫn đường lần lượt qua các điểm trong ngày"
+                    className="flex items-center gap-1 text-[11px] font-semibold text-white bg-terra hover:bg-terra-dark px-2 py-1 rounded-full flex-shrink-0 transition-colors"
+                  >
+                    <Navigation size={12} /> Dẫn cả ngày
                   </button>
                 )}
               </div>
+              )}
 
               {/* Bản đồ tổng ngày — pin đánh số theo thứ tự hoạt động */}
               {(() => {
@@ -677,7 +753,8 @@ export default function Itinerary({
                             color={color}
                             onEdit={() => startEdit(act)}
                             onDelete={() => onDelete(act.id)}
-                            onNavigate={() => openDirections(act)}
+                            onNavigate={() => navActivity(act)}
+                            onNavigateBackup={(b) => navBackup(act, b)}
                           />
                         </div>
                       </div>
@@ -742,7 +819,8 @@ export default function Itinerary({
                         color={PALETTE[sortedDates.length % PALETTE.length]}
                         onEdit={() => startEdit(act)}
                         onDelete={() => onDelete(act.id)}
-                        onNavigate={() => openDirections(act)}
+                        onNavigate={() => navActivity(act)}
+                        onNavigateBackup={(b) => navBackup(act, b)}
                       />
                     </div>
                   </div>
@@ -776,6 +854,18 @@ export default function Itinerary({
           <Plus size={24} />
         </button>
       )}
+
+      {/* Đang chuẩn bị dẫn đường (geocode địa chỉ thiếu toạ độ) */}
+      {navPreparing && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center">
+          <div className="bg-white rounded-2xl px-5 py-4 flex items-center gap-2 text-sm text-ink shadow-xl">
+            <Loader2 size={16} className="animate-spin" /> Đang chuẩn bị dẫn đường…
+          </div>
+        </div>
+      )}
+
+      {/* Dẫn đường ngay trong app */}
+      {navStops && <NavigationView stops={navStops} onClose={() => setNavStops(null)} />}
     </div>
   );
 }
