@@ -6,8 +6,9 @@ export interface Trip {
   lon?: number | null;
   startDate: string;
   endDate: string;
-  coverColor: string;
-  emoji: string;
+  coverColor: string;   // class gradient Tailwind có sẵn, hoặc màu tự chọn "#rrggbb"
+  emoji: string;        // luôn có — dùng cho widget/thông báo (chỉ hiện được chữ)
+  iconImage?: string | null; // ảnh biểu tượng tự tải lên (data URL); có thì ưu tiên hơn emoji
   createdAt: string;
   updatedAt: string;
 }

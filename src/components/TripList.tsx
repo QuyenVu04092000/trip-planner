@@ -5,6 +5,8 @@ import { fetchMediaItems, fetchMyProfile } from "../utils/db";
 import { formatDateRange, getDays, getCountdown } from "../utils/format";
 import { subscribeToPush, unsubscribeFromPush, getPushSubscriptionState } from "../utils/pushClient";
 import CreateTripModal from "./CreateTripModal";
+import TripIcon from "./TripIcon";
+import { coverProps } from "../utils/tripCover";
 import ProfileModal from "./ProfileModal";
 
 interface Props {
@@ -88,7 +90,7 @@ function TripCardCover({ trip, onDelete }: CoverProps) {
           />
         ))
       ) : (
-        <div className={`absolute inset-0 bg-gradient-to-br ${trip.coverColor}`} />
+        <div className={`absolute inset-0 ${coverProps(trip.coverColor).className}`} style={coverProps(trip.coverColor).style} />
       )}
 
       {/* ── Main image layer — object-contain keeps full photo visible ── */}
@@ -106,7 +108,7 @@ function TripCardCover({ trip, onDelete }: CoverProps) {
       {/* ── No image: big centered emoji ── */}
       {!hasImages && loaded && (
         <div className="absolute inset-0 flex items-center justify-center pb-12">
-          <span className="text-7xl drop-shadow-lg">{trip.emoji}</span>
+          <TripIcon trip={trip} size={88} className="text-7xl drop-shadow-lg shadow-lg" />
         </div>
       )}
 
@@ -119,7 +121,7 @@ function TripCardCover({ trip, onDelete }: CoverProps) {
           <div className="min-w-0 flex-1">
             {/* Name row */}
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xl leading-none flex-shrink-0">{trip.emoji}</span>
+              <TripIcon trip={trip} size={22} className="text-xl" />
               <h3 className="font-serif font-semibold text-white text-[16px] leading-tight truncate" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
                 {trip.name}
               </h3>

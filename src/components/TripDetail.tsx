@@ -36,7 +36,7 @@ import {
 } from "../utils/db";
 import { supabase } from "../utils/supabase";
 import { scheduleActivityNotifications } from "../utils/activityNotifications";
-import { reloadWidget } from "../utils/widgetBridge";
+import { warmWidgetTripCache } from "../utils/widgetBridge";
 import Itinerary from "./Itinerary";
 import SuggestionsModal from "./SuggestionsModal";
 import Memory from "./Memory";
@@ -53,6 +53,7 @@ interface Props {
   onLogout: () => void;
 }
 
+import TripIcon from "./TripIcon";
 import { formatDateRange, getCountdown } from "../utils/format";
 
 export default function TripDetail({
@@ -172,11 +173,12 @@ export default function TripDetail({
     };
   }, [trip.id]);
 
-  // Dữ liệu trong trip đổi sau lần load đầu (hoạt động/chi tiêu/quỹ/ảnh) → kích
-  // widget reload để widget nào đang chọn trip này tự fetch dữ liệu mới.
+  // Dữ liệu trong trip đổi (hoạt động/chi tiêu/quỹ/ảnh/tên/ngày) → GHI THẲNG cache
+  // widget cho trip này (kiểu "lai") → widget hiện NGAY khi reload, không chờ mạng.
+  // Self-fetch của widget vẫn chạy để xác nhận lại.
   useEffect(() => {
     if (!widgetReady.current) return;
-    void reloadWidget();
+    void warmWidgetTripCache({ trip, activities, expenses, funds, fundPayments, media });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     trip.startDate,
@@ -275,7 +277,7 @@ export default function TripDetail({
             >
               <ArrowLeft size={15} />
             </button>
-            <span className="text-lg flex-shrink-0">{trip.emoji}</span>
+            <TripIcon trip={trip} size={22} className="text-lg" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <h1 className="font-serif text-ink font-semibold text-[16px] truncate leading-tight">

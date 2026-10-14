@@ -84,6 +84,7 @@ function rowToTrip(r: Record<string, unknown>): Trip {
     endDate: (r.end_date as string) ?? '',
     coverColor: (r.cover_color as string) ?? 'from-blue-400 to-indigo-600',
     emoji: (r.emoji as string) ?? '✈️',
+    iconImage: (r.icon_image as string) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -94,7 +95,7 @@ function tripToRow(t: Trip) {
     id: t.id, name: t.name, destination: t.destination,
     lat: t.lat ?? null, lon: t.lon ?? null,
     start_date: t.startDate, end_date: t.endDate,
-    cover_color: t.coverColor, emoji: t.emoji,
+    cover_color: t.coverColor, emoji: t.emoji, icon_image: t.iconImage ?? null,
     created_at: t.createdAt, updated_at: t.updatedAt,
   };
 }
